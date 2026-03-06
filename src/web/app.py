@@ -54,6 +54,9 @@ class WebApp:
         self.stop_callback = None
         self.database = database
 
+        # 视频流客户端计数器
+        self.stream_clients = 0
+
         # 创建Flask应用
         self.app = Flask(__name__, template_folder='templates', static_folder='static')
         self.app.config['SECRET_KEY'] = secret_key
@@ -226,23 +229,30 @@ class WebApp:
         Yields:
             JPEG格式的视频帧
         """
-        while True:
-            if self.system_state['frame'] is not None:
-                # 编码为JPEG
-                ret, buffer = cv2.imencode('.jpg', self.system_state['frame'])
-                if ret:
-                    frame = buffer.tobytes()
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        self.stream_clients += 1
+        try:
+            while True:
+                if self.system_state['frame'] is not None:
+                    # 编码为JPEG，降低质量以减少带宽
+                    ret, buffer = cv2.imencode('.jpg', self.system_state['frame'],
+                                              [cv2.IMWRITE_JPEG_QUALITY, 70])
+                    if ret:
+                        frame = buffer.tobytes()
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        finally:
+            self.stream_clients -= 1
 
     def update_frame(self, frame: np.ndarray) -> None:
         """
-        更新当前帧
+        更新当前帧（只在有客户端连接时才复制）
 
         Args:
             frame: 视频帧
         """
-        self.system_state['frame'] = frame.copy()
+        # 只在有客户端观看视频流时才更新帧
+        if self.stream_clients > 0:
+            self.system_state['frame'] = frame.copy()
 
     def update_detections(self, detections: list) -> None:
         """
