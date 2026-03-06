@@ -180,3 +180,4 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 *.db
+data/litter_monitor.db
