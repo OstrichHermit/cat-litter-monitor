@@ -2,6 +2,7 @@
 ROI标注工具 - go2rtc版本
 
 该脚本用于标注猫砂盆的ROI区域，支持go2rtc网络摄像头。
+现在支持标注多个ROI区域（多个猫砂盆）。
 """
 
 import sys
@@ -9,6 +10,7 @@ import cv2
 import numpy as np
 import yaml
 from pathlib import Path
+from typing import List, Dict, Optional
 
 # 添加项目路径
 project_root = Path(__file__).parent.parent
@@ -18,20 +20,32 @@ from src.core.camera import Go2RTCConfig, Go2RTCCamera
 from src.config import get_config
 
 
+class SingleROI:
+    """单个ROI区域的数据结构"""
+
+    def __init__(self, roi_id: int, name: str, roi_type: str = 'rectangle'):
+        self.id = roi_id
+        self.name = name
+        self.type = roi_type
+        self.points = []
+        self.rectangle = None
+        self.polygon = None
+
+
 class ROIAnnotatorGo2RTC:
     """
     ROI标注工具类 - go2rtc版本
 
-    用于交互式标注ROI区域。
+    用于交互式标注多个ROI区域。
     """
 
     def __init__(self):
         """
         初始化标注工具
         """
-        self.points = []
+        self.rois: List[SingleROI] = []
+        self.current_roi_index = 0
         self.drawing = False
-        self.roi_type = 'rectangle'  # rectangle 或 polygon
 
         # 加载配置
         self.config = get_config()
@@ -56,26 +70,77 @@ class ROIAnnotatorGo2RTC:
             fps=camera_config.get('fps', 30)
         )
 
+        # 加载现有的ROI配置
+        self.load_existing_rois()
+
+    def load_existing_rois(self):
+        """加载现有的ROI配置"""
+        roi_config = self.config.get('roi', {})
+
+        # 检查是否是新的多ROI格式
+        if 'rois' in roi_config:
+            # 新格式
+            for roi_data in roi_config['rois']:
+                roi = SingleROI(
+                    roi_id=roi_data['id'],
+                    name=roi_data['name'],
+                    roi_type=roi_data['type']
+                )
+                if roi_data['type'] == 'rectangle' and 'rectangle' in roi_data:
+                    rect = roi_data['rectangle']
+                    roi.rectangle = rect
+                    roi.points = [
+                        [rect['x'], rect['y']],
+                        [rect['x'] + rect['width'], rect['y'] + rect['height']]
+                    ]
+                elif roi_data['type'] == 'polygon' and 'polygon' in roi_data:
+                    roi.polygon = roi_data['polygon']
+                    roi.points = roi_data['polygon']
+                self.rois.append(roi)
+        elif roi_config:
+            # 旧格式（单个ROI），转换为新格式
+            roi_type = roi_config.get('type', 'rectangle')
+            roi = SingleROI(roi_id=1, name="猫砂盆1", roi_type=roi_type)
+
+            if roi_type == 'rectangle' and 'rectangle' in roi_config:
+                rect = roi_config['rectangle']
+                roi.rectangle = rect
+                roi.points = [
+                    [rect['x'], rect['y']],
+                    [rect['x'] + rect['width'], rect['y'] + rect['height']]
+                ]
+            elif roi_type == 'polygon' and 'polygon' in roi_config:
+                roi.polygon = roi_config['polygon']
+                roi.points = roi_config['polygon']
+
+            self.rois.append(roi)
+
+        # 如果没有ROI，创建第一个
+        if not self.rois:
+            self.rois.append(SingleROI(roi_id=1, name="猫砂盆1", roi_type='rectangle'))
+
     def start(self):
         """
         启动标注工具
         """
         print("=" * 50)
-        print("ROI 标注工具 - go2rtc 版本")
+        print("ROI 标注工具 - go2rtc 版本（多ROI支持）")
         print("=" * 50)
         print("按键说明:")
-        print("  r: 切换到矩形模式")
-        print("  p: 切换到多边形模式")
-        print("  c: 清除标注")
-        print("  s: 保存并退出")
+        print("  n: 完成当前ROI，开始绘制下一个ROI")
+        print("  r: 切换到矩形模式（应用到当前ROI）")
+        print("  p: 切换到多边形模式（应用到当前ROI）")
+        print("  c: 清除当前ROI的标注")
+        print("  a: 清除所有ROI")
+        print("  s: 保存所有ROI并退出")
         print("  q: 退出不保存")
-        print("  鼠标左键: 绘制ROI")
+        print("  鼠标左键: 绘制当前ROI")
         print("  鼠标右键: 完成多边形")
         print("=" * 50)
 
         # 启动摄像头
         if not self.camera.start():
-            print("❌ 无法启动摄像头")
+            print("无法启动摄像头")
             print("\n可能的原因：")
             print("  1. go2rtc 服务未启动")
             print("  2. 网络摄像头未连接")
@@ -83,30 +148,30 @@ class ROIAnnotatorGo2RTC:
             print("\n请检查 go2rtc 服务状态和配置")
             return
 
-        print("✅ 摄像头已启动")
+        print("摄像头已启动")
 
         # 等待一下，让视频流稳定
         import time
-        print("⏳ 等待视频流稳定（3秒）...")
+        print("等待视频流稳定（3秒）...")
         time.sleep(3)
 
         # 尝试多次读取帧
         max_attempts = 5
         for attempt in range(max_attempts):
-            print(f"📸 尝试读取视频帧（第 {attempt + 1}/{max_attempts} 次）...")
+            print(f"尝试读取视频帧（第 {attempt + 1}/{max_attempts} 次）...")
 
             ret, frame = self.camera.read_blocking(timeout=10)
 
             if ret and frame is not None:
-                print(f"✅ 视频帧已获取 ({frame.shape[1]}x{frame.shape[0]})")
+                print(f"视频帧已获取 ({frame.shape[1]}x{frame.shape[0]})")
                 break
             else:
-                print(f"⚠️  第 {attempt + 1} 次读取失败")
+                print(f"第 {attempt + 1} 次读取失败")
                 if attempt < max_attempts - 1:
-                    print("⏳ 等待2秒后重试...")
+                    print("等待2秒后重试...")
                     time.sleep(2)
         else:
-            print("❌ 无法读取视频帧")
+            print("无法读取视频帧")
             print("\n可能的原因：")
             print("  1. 摄像头没有输出视频流")
             print("  2. 网络延迟过高")
@@ -114,7 +179,7 @@ class ROIAnnotatorGo2RTC:
             self.camera.stop()
             return
 
-        print("✅ 开始标注...")
+        print("开始标注...")
 
         # 创建窗口
         cv2.namedWindow('ROI Annotation')
@@ -123,29 +188,29 @@ class ROIAnnotatorGo2RTC:
         display_frame = frame.copy()
 
         while True:
-            # 绘制当前ROI
+            # 绘制所有ROI
             temp_frame = display_frame.copy()
+            self.draw_all_rois(temp_frame)
 
-            if self.roi_type == 'rectangle' and len(self.points) >= 2:
-                # 绘制矩形
-                pt1 = tuple(self.points[0])
-                pt2 = tuple(self.points[1])
-                cv2.rectangle(temp_frame, pt1, pt2, (0, 255, 0), 2)
+            # 绘制当前正在编辑的ROI
+            if self.current_roi_index < len(self.rois):
+                current_roi = self.rois[self.current_roi_index]
+                self.draw_current_roi(temp_frame, current_roi)
 
-            elif self.roi_type == 'polygon' and len(self.points) >= 2:
-                # 绘制多边形
-                pts = np.array(self.points, np.int32)
-                pts = pts.reshape((-1, 1, 2))
-                cv2.polylines(temp_frame, [pts], True, (0, 255, 0), 2)
+            # 显示当前ROI信息
+            roi_info = f"Current: ROI {self.current_roi_index + 1}/{len(self.rois)}"
+            cv2.putText(temp_frame, roi_info, (10, 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
 
-            # 显示模式
-            mode_text = f"Mode: {self.roi_type} | Points: {len(self.points)}"
-            cv2.putText(temp_frame, mode_text, (10, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            # 显示当前模式
+            current_roi = self.rois[self.current_roi_index]
+            mode_text = f"Mode: {current_roi.type} | Points: {len(current_roi.points)}"
+            cv2.putText(temp_frame, mode_text, (10, 60),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
             # 显示提示
-            help_text = "Press 's' to save, 'q' to quit"
-            cv2.putText(temp_frame, help_text, (10, 60),
+            help_text = "Press 'n' for new ROI, 's' to save, 'q' to quit"
+            cv2.putText(temp_frame, help_text, (10, 90),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
             # 显示帧
@@ -154,19 +219,41 @@ class ROIAnnotatorGo2RTC:
             # 处理按键
             key = cv2.waitKey(1) & 0xFF
 
-            if key == ord('r'):
-                self.roi_type = 'rectangle'
-                self.points = []
+            if key == ord('n'):
+                # 完成当前ROI，开始下一个
+                self.current_roi_index += 1
+                if self.current_roi_index >= len(self.rois):
+                    # 创建新ROI
+                    new_id = len(self.rois) + 1
+                    new_roi = SingleROI(roi_id=new_id, name=f"猫砂盆{new_id}", roi_type='rectangle')
+                    self.rois.append(new_roi)
+                print(f"切换到 ROI {self.current_roi_index + 1}/{len(self.rois)}")
+            elif key == ord('r'):
+                # 切换当前ROI到矩形模式
+                if self.current_roi_index < len(self.rois):
+                    self.rois[self.current_roi_index].type = 'rectangle'
+                    self.rois[self.current_roi_index].points = []
                 print("切换到矩形模式")
             elif key == ord('p'):
-                self.roi_type = 'polygon'
-                self.points = []
+                # 切换当前ROI到多边形模式
+                if self.current_roi_index < len(self.rois):
+                    self.rois[self.current_roi_index].type = 'polygon'
+                    self.rois[self.current_roi_index].points = []
                 print("切换到多边形模式")
             elif key == ord('c'):
-                self.points = []
-                print("清除标注")
+                # 清除当前ROI
+                if self.current_roi_index < len(self.rois):
+                    self.rois[self.current_roi_index].points = []
+                    self.rois[self.current_roi_index].rectangle = None
+                    self.rois[self.current_roi_index].polygon = None
+                print("清除当前ROI标注")
+            elif key == ord('a'):
+                # 清除所有ROI
+                self.rois = [SingleROI(roi_id=1, name="猫砂盆1", roi_type='rectangle')]
+                self.current_roi_index = 0
+                print("清除所有ROI")
             elif key == ord('s'):
-                self.save_roi()
+                self.save_rois()
                 break
             elif key == ord('q'):
                 print("退出不保存")
@@ -186,29 +273,89 @@ class ROIAnnotatorGo2RTC:
             flags: 标志
             param: 参数
         """
+        if self.current_roi_index >= len(self.rois):
+            return
+
+        current_roi = self.rois[self.current_roi_index]
+
         if event == cv2.EVENT_LBUTTONDOWN:
-            if self.roi_type == 'rectangle':
+            if current_roi.type == 'rectangle':
                 # 矩形模式：记录两个点
-                if len(self.points) >= 2:
-                    self.points = []
-                self.points.append([x, y])
-                print(f"添加点: ({x}, {y})")
+                if len(current_roi.points) >= 2:
+                    current_roi.points = []
+                current_roi.points.append([x, y])
+                print(f"ROI {current_roi.id}: 添加点 ({x}, {y})")
             else:
                 # 多边形模式：记录顶点
-                self.points.append([x, y])
-                print(f"添加顶点: ({x}, {y})")
+                current_roi.points.append([x, y])
+                print(f"ROI {current_roi.id}: 添加顶点 ({x}, {y})")
 
         elif event == cv2.EVENT_RBUTTONDOWN:
-            if self.roi_type == 'polygon':
+            if current_roi.type == 'polygon':
                 # 完成多边形
                 pass
 
-    def save_roi(self):
+    def draw_current_roi(self, frame: np.ndarray, roi: SingleROI):
+        """绘制当前正在编辑的ROI"""
+        if roi.type == 'rectangle' and len(roi.points) >= 1:
+            # 绘制矩形预览
+            pt = tuple(roi.points[0])
+            cv2.circle(frame, pt, 5, (0, 255, 255), -1)
+            if len(roi.points) >= 2:
+                pt2 = tuple(roi.points[1])
+                cv2.rectangle(frame, pt, pt2, (0, 255, 255), 2)
+
+        elif roi.type == 'polygon' and len(roi.points) >= 1:
+            # 绘制多边形预览
+            for i, point in enumerate(roi.points):
+                pt = tuple(point)
+                cv2.circle(frame, pt, 5, (0, 255, 255), -1)
+                if i > 0:
+                    prev_pt = tuple(roi.points[i - 1])
+                    cv2.line(frame, prev_pt, pt, (0, 255, 255), 2)
+            if len(roi.points) >= 3:
+                # 闭合多边形
+                cv2.line(frame, tuple(roi.points[-1]), tuple(roi.points[0]), (0, 255, 255), 2)
+
+    def draw_all_rois(self, frame: np.ndarray):
+        """绘制所有已完成的ROI"""
+        colors = [
+            (0, 255, 0),    # 绿色
+            (255, 0, 0),    # 蓝色
+            (0, 0, 255),    # 红色
+            (255, 255, 0),  # 青色
+            (255, 0, 255),  # 品红色
+        ]
+
+        for i, roi in enumerate(self.rois):
+            # 跳过当前正在编辑的ROI
+            if i == self.current_roi_index:
+                continue
+
+            color = colors[i % len(colors)]
+
+            if roi.type == 'rectangle' and roi.rectangle:
+                x = roi.rectangle['x']
+                y = roi.rectangle['y']
+                w = roi.rectangle['width']
+                h = roi.rectangle['height']
+                cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+                cv2.putText(frame, f"ROI {roi.id}", (x, y - 10),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+            elif roi.type == 'polygon' and roi.polygon and len(roi.polygon) >= 3:
+                polygon = np.array(roi.polygon, dtype=np.int32)
+                cv2.polylines(frame, [polygon], True, color, 2)
+                center = np.mean(roi.polygon, axis=0).astype(int)
+                cv2.putText(frame, f"ROI {roi.id}", tuple(center),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+    def save_rois(self):
         """
-        保存ROI配置
+        保存所有ROI配置
         """
-        if not self.points:
-            print("没有标注ROI")
+        if not self.rois:
+            print("没有ROI可保存")
             return
 
         # 加载现有配置
@@ -217,46 +364,65 @@ class ROIAnnotatorGo2RTC:
         with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
 
-        # 更新ROI配置
-        if self.roi_type == 'rectangle':
-            if len(self.points) < 2:
-                print("矩形需要两个点")
-                return
+        # 处理每个ROI
+        rois_data = []
+        for roi in self.rois:
+            if not roi.points:
+                continue
 
-            pt1 = self.points[0]
-            pt2 = self.points[1]
-
-            # 计算矩形参数
-            x = min(pt1[0], pt2[0])
-            y = min(pt1[1], pt2[1])
-            width = abs(pt2[0] - pt1[0])
-            height = abs(pt2[1] - pt1[1])
-
-            config['roi']['type'] = 'rectangle'
-            config['roi']['rectangle'] = {
-                'x': x,
-                'y': y,
-                'width': width,
-                'height': height
+            roi_dict = {
+                'id': roi.id,
+                'name': roi.name,
+                'type': roi.type
             }
 
-            print(f"\n保存矩形ROI: x={x}, y={y}, width={width}, height={height}")
+            if roi.type == 'rectangle':
+                if len(roi.points) < 2:
+                    print(f"ROI {roi.id}: 矩形需要两个点")
+                    continue
 
-        else:  # polygon
-            if len(self.points) < 3:
-                print("多边形至少需要三个点")
-                return
+                pt1 = roi.points[0]
+                pt2 = roi.points[1]
 
-            config['roi']['type'] = 'polygon'
-            config['roi']['polygon'] = self.points
+                # 计算矩形参数
+                x = min(pt1[0], pt2[0])
+                y = min(pt1[1], pt2[1])
+                width = abs(pt2[0] - pt1[0])
+                height = abs(pt2[1] - pt1[1])
 
-            print(f"\n保存多边形ROI: {len(self.points)} 个顶点")
+                roi_dict['rectangle'] = {
+                    'x': int(x),
+                    'y': int(y),
+                    'width': int(width),
+                    'height': int(height)
+                }
+                roi.rectangle = roi_dict['rectangle']
+
+                print(f"保存矩形ROI {roi.id}: x={x}, y={y}, width={width}, height={height}")
+
+            else:  # polygon
+                if len(roi.points) < 3:
+                    print(f"ROI {roi.id}: 多边形至少需要三个点")
+                    continue
+
+                roi_dict['polygon'] = roi.points
+                roi.polygon = roi.points
+
+                print(f"保存多边形ROI {roi.id}: {len(roi.points)} 个顶点")
+
+            rois_data.append(roi_dict)
+
+        # 更新配置
+        if 'roi' not in config:
+            config['roi'] = {}
+
+        config['roi']['rois'] = rois_data
 
         # 保存配置
         with open(config_path, 'w', encoding='utf-8') as f:
             yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
 
-        print(f"ROI配置已保存到: {config_path}")
+        print(f"已保存 {len(rois_data)} 个ROI配置到: {config_path}")
 
 
 if __name__ == '__main__':

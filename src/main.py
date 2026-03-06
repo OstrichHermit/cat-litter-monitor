@@ -20,7 +20,7 @@ from src.utils.logger import get_logger, setup_logger_from_config
 from src.core.camera import Camera, create_camera_from_config
 from src.core.cat_detector import CatDetector
 from src.core.object_tracker import ObjectTracker
-from src.core.behavior_analyzer import BehaviorAnalyzer, ROI
+from src.core.behavior_analyzer import BehaviorAnalyzer, ROI, MultiROI
 from src.core.photo_capture import PhotoCaptureManager, PhotoCaptureConfig
 from src.storage.database import Database
 from src.web.app import WebApp, create_templates_directory
@@ -105,24 +105,53 @@ class LitterMonitorSystem:
         )
         self.logger.info("目标追踪器初始化完成")
 
-        # 初始化ROI
+        # 初始化ROI（支持多ROI）
         roi_config = self.config.get_roi_config()
-        if roi_config.get('type') == 'rectangle':
-            rect = roi_config.get('rectangle', {})
-            roi = ROI(
-                roi_type='rectangle',
-                rectangle=[rect.get('x', 100), rect.get('y', 100), rect.get('width', 300), rect.get('height', 300)]
-            )
-        else:
-            roi = ROI(
-                roi_type='polygon',
-                polygon=roi_config.get('polygon', [])
-            )
+        multi_roi = None
+
+        # 检查是否是新的多ROI格式
+        if 'rois' in roi_config:
+            # 新格式：多ROI
+            rois_list = []
+            for roi_data in roi_config['rois']:
+                if roi_data.get('type') == 'rectangle':
+                    rect = roi_data.get('rectangle', {})
+                    roi = ROI(
+                        roi_type='rectangle',
+                        rectangle=[rect.get('x', 100), rect.get('y', 100),
+                                  rect.get('width', 300), rect.get('height', 300)]
+                    )
+                else:
+                    roi = ROI(
+                        roi_type='polygon',
+                        polygon=roi_data.get('polygon', [])
+                    )
+                rois_list.append(roi)
+
+            multi_roi = MultiROI(rois_list)
+            self.logger.info(f"加载了 {len(rois_list)} 个ROI区域")
+
+        elif roi_config.get('type'):
+            # 旧格式：单个ROI，保持向后兼容
+            if roi_config.get('type') == 'rectangle':
+                rect = roi_config.get('rectangle', {})
+                roi = ROI(
+                    roi_type='rectangle',
+                    rectangle=[rect.get('x', 100), rect.get('y', 100),
+                              rect.get('width', 300), rect.get('height', 300)]
+                )
+            else:
+                roi = ROI(
+                    roi_type='polygon',
+                    polygon=roi_config.get('polygon', [])
+                )
+            multi_roi = MultiROI([roi])
+            self.logger.info("加载了单个ROI区域（旧格式）")
 
         # 初始化行为分析器
         behavior_config = self.config.get_behavior_config()
         self.analyzer = BehaviorAnalyzer(
-            roi=roi,
+            multi_roi=multi_roi,
             min_frames_in_roi=roi_config.get('min_frames_in_roi', 15),
             exit_delay_frames=roi_config.get('exit_delay_frames', 30),
             min_duration=behavior_config.get('min_duration', 5.0),
@@ -177,6 +206,10 @@ class LitterMonitorSystem:
         """
         self.logger.info("启动系统...")
         self.running = True
+
+        # 系统启动时更新统计数据
+        self.logger.info("系统启动，更新统计数据...")
+        self._update_statistics()
 
         # 启动摄像头
         if not self.camera.start():
@@ -239,10 +272,6 @@ class LitterMonitorSystem:
                 # 更新Web帧（无论是否处理，都更新视频流）
                 self.web_app.update_frame(processed_frame)
 
-                # 定期更新统计
-                if self.frame_count % 600 == 0:  # 每600帧更新一次
-                    self._update_statistics()
-
         except Exception as e:
             self.logger.error(f"主循环异常: {e}")
         finally:
@@ -294,8 +323,8 @@ class LitterMonitorSystem:
             else:
                 continue
 
-            # 判断是否在ROI内
-            in_roi = self.analyzer.roi.contains(center)
+            # 判断是否在任一ROI内
+            in_roi = self.analyzer.multi_roi.contains_any(center)
 
             # 更新拍照管理器
             photo_path = self.photo_manager.update(

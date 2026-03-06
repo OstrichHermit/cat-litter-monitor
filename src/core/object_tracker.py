@@ -47,6 +47,8 @@ class Track:
         bbox: 边界框 [x, y, w, h] (左上角+宽高格式)
         confidence: 置信度
         smoothed_bbox: 平滑后的边界框（用于稳定追踪）
+        in_roi: 是否在ROI内
+        roi_entry_confirmed: ROI进入是否已确认
     """
     track_id: int
     state: TrackState = TrackState.TENTATIVE
@@ -57,6 +59,8 @@ class Track:
     bbox: np.ndarray = None
     confidence: float = 0.0
     smoothed_bbox: np.ndarray = None
+    in_roi: bool = False
+    roi_entry_confirmed: bool = False
 
     def __post_init__(self):
         if self.bbox is None:
@@ -130,16 +134,56 @@ class Track:
         if self.state == TrackState.TENTATIVE and self.hits >= 1:
             self.state = TrackState.CONFIRMED
 
+    def set_in_roi(self, in_roi: bool) -> None:
+        """
+        设置是否在ROI内
+
+        Args:
+            in_roi: 是否在ROI内
+        """
+        self.in_roi = in_roi
+
+    def confirm_roi_entry(self) -> None:
+        """
+        确认ROI进入
+
+        当确认猫进入ROI后调用此方法，会延长track的存活时间
+        """
+        self.roi_entry_confirmed = True
+        self.in_roi = True
+
+    def exit_roi(self) -> None:
+        """
+        离开ROI
+
+        当猫离开ROI后调用此方法
+        """
+        self.in_roi = False
+        self.roi_entry_confirmed = False
+
     def mark_missed(self) -> None:
         """
         标记丢失
+
+        如果确认在ROI内，延长存活时间以应对检测不稳定的情况
         """
         self.hit_streak = 0
-        if self.state == TrackState.TENTATIVE:
-            # 对于暂定track，给2次机会（更快速删除）
-            if self.time_since_update > 2:
-                self.state = TrackState.DELETED
-        elif self.time_since_update > 10:  # 确认track：10帧未更新则删除
+
+        # 确定删除阈值
+        if self.roi_entry_confirmed:
+            # ROI内已确认：延长存活时间（60帧 ≈ 2秒@30fps）
+            delete_threshold = 60
+        elif self.in_roi:
+            # 在ROI内但未确认：中等存活时间（30帧 ≈ 1秒@30fps）
+            delete_threshold = 30
+        elif self.state == TrackState.TENTATIVE:
+            # 暂定track：快速删除（2帧）
+            delete_threshold = 2
+        else:
+            # 普通确认track：正常存活时间（10帧）
+            delete_threshold = 10
+
+        if self.time_since_update > delete_threshold:
             self.state = TrackState.DELETED
 
     def is_confirmed(self) -> bool:

@@ -90,6 +90,7 @@ class Database:
                     record_time TEXT NOT NULL,
                     record_datetime TEXT NOT NULL,
                     photo_path TEXT NOT NULL,
+                    roi_id INTEGER DEFAULT 1,
                     detected_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (cat_id) REFERENCES cats(id)
@@ -214,7 +215,8 @@ class Database:
         cat_name: str,
         record_date: str,
         record_time: str,
-        photo_path: str
+        photo_path: str,
+        roi_id: int = 1
     ) -> int:
         """
         插入猫砂盆使用记录
@@ -224,6 +226,7 @@ class Database:
             record_date: 记录日期（YYYY-MM-DD）
             record_time: 记录时间（HH:MM:SS）
             photo_path: 照片路径
+            roi_id: ROI区域ID（默认为1）
 
         Returns:
             插入记录的ID
@@ -246,11 +249,11 @@ class Database:
             cursor.execute("""
                 INSERT INTO litter_records (
                     cat_id, cat_name, record_date, record_time,
-                    record_datetime, photo_path
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    record_datetime, photo_path, roi_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 cat_id, cat_name, record_date, record_time,
-                record_datetime, photo_path
+                record_datetime, photo_path, roi_id
             ))
 
             return cursor.lastrowid
@@ -268,6 +271,7 @@ class Database:
                 - date: 日期（YYYY-MM-DD）
                 - time: 时间（HH:MM:SS）
                 - photo_path: 照片路径
+                - roi_id: ROI区域ID（可选，默认为1）
 
         Returns:
             插入记录的ID列表
@@ -278,7 +282,8 @@ class Database:
                 cat_name=record['cat_name'],
                 record_date=record['date'],
                 record_time=record['time'],
-                photo_path=record['photo_path']
+                photo_path=record['photo_path'],
+                roi_id=record.get('roi_id', 1)
             )
             record_ids.append(record_id)
         return record_ids

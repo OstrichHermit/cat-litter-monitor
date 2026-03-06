@@ -114,7 +114,10 @@ class PhotoManager:
 
             self.logger.info(f"照片移动成功: {source_path} -> {target_path}")
 
-            return str(target_path)
+            # 返回相对路径，使用正斜杠（Unix风格）而不是反斜杠（Windows风格）
+            # Web界面期望的格式：photo/YYYY-MM-DD/Identified/猫名/文件名.jpg
+            relative_path = target_path.relative_to(self.photo_base_dir.parent)
+            return relative_path.as_posix()
 
         except Exception as e:
             self.logger.error(f"移动照片失败: {e}")
