@@ -75,19 +75,46 @@ class ROIAnnotatorGo2RTC:
 
         # 启动摄像头
         if not self.camera.start():
-            print("无法启动摄像头")
+            print("❌ 无法启动摄像头")
+            print("\n可能的原因：")
+            print("  1. go2rtc 服务未启动")
+            print("  2. 网络摄像头未连接")
+            print("  3. 配置文件中的摄像头名称不正确")
+            print("\n请检查 go2rtc 服务状态和配置")
             return
 
-        print("摄像头已启动，正在获取视频流...")
+        print("✅ 摄像头已启动")
 
-        # 读取一帧作为背景
-        ret, frame = self.camera.read_blocking(timeout=10)
-        if not ret:
-            print("无法读取帧")
+        # 等待一下，让视频流稳定
+        import time
+        print("⏳ 等待视频流稳定（3秒）...")
+        time.sleep(3)
+
+        # 尝试多次读取帧
+        max_attempts = 5
+        for attempt in range(max_attempts):
+            print(f"📸 尝试读取视频帧（第 {attempt + 1}/{max_attempts} 次）...")
+
+            ret, frame = self.camera.read_blocking(timeout=10)
+
+            if ret and frame is not None:
+                print(f"✅ 视频帧已获取 ({frame.shape[1]}x{frame.shape[0]})")
+                break
+            else:
+                print(f"⚠️  第 {attempt + 1} 次读取失败")
+                if attempt < max_attempts - 1:
+                    print("⏳ 等待2秒后重试...")
+                    time.sleep(2)
+        else:
+            print("❌ 无法读取视频帧")
+            print("\n可能的原因：")
+            print("  1. 摄像头没有输出视频流")
+            print("  2. 网络延迟过高")
+            print("  3. go2rtc 配置不正确")
             self.camera.stop()
             return
 
-        print("视频帧已获取，开始标注...")
+        print("✅ 开始标注...")
 
         # 创建窗口
         cv2.namedWindow('ROI Annotation')

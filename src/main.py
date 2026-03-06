@@ -20,8 +20,8 @@ from src.utils.logger import get_logger, setup_logger_from_config
 from src.core.camera import Camera, create_camera_from_config
 from src.core.cat_detector import CatDetector
 from src.core.object_tracker import ObjectTracker
-from src.core.cat_classifier import CatIdentifier
 from src.core.behavior_analyzer import BehaviorAnalyzer, ROI
+from src.core.photo_capture import PhotoCaptureManager, PhotoCaptureConfig
 from src.storage.database import Database
 from src.web.app import WebApp, create_templates_directory
 import cv2
@@ -40,7 +40,6 @@ class LitterMonitorSystem:
         camera: 摄像头对象
         detector: 猫检测器
         tracker: 目标追踪器
-        classifier: 猫分类器
         analyzer: 行为分析器
         database: 数据库对象
         web_app: Web应用对象
@@ -106,18 +105,6 @@ class LitterMonitorSystem:
         )
         self.logger.info("目标追踪器初始化完成")
 
-        # 初始化猫分类器
-        classifier_config = self.config.get_classifier_config()
-        model_path = self.config.get_absolute_path(classifier_config.get('model_path', 'data/models/cat_classifier.pth'))
-        self.classifier = CatIdentifier(
-            model_path=model_path,
-            num_classes=classifier_config.get('num_classes', 4),
-            class_names=self.config.get_cat_names(),
-            input_size=classifier_config.get('input_size', 224),
-            use_gpu=classifier_config.get('pretrained', True)
-        )
-        self.logger.info(f"猫分类器初始化完成: {model_path}")
-
         # 初始化ROI
         roi_config = self.config.get_roi_config()
         if roi_config.get('type') == 'rectangle':
@@ -154,13 +141,24 @@ class LitterMonitorSystem:
         self.web_app = WebApp(
             host=web_config.get('host', '0.0.0.0'),
             port=web_config.get('port', 5000),
-            debug=web_config.get('debug', False)
+            debug=web_config.get('debug', False),
+            database=self.database
         )
         # 设置停止回调
         self.web_app.set_stop_callback(self.stop)
         # 创建模板目录
         create_templates_directory()
         self.logger.info(f"Web应用初始化完成: {web_config.get('host')}:{web_config.get('port')}")
+
+        # 初始化拍照管理器
+        photo_config = self.config.get_photo_config()
+        photo_capture_config = PhotoCaptureConfig(
+            min_stay_seconds=photo_config.get('min_stay_seconds', 3.0),
+            photo_interval=photo_config.get('photo_interval', 10.0),
+            photo_base_dir=photo_config.get('photo_base_dir', 'photo')
+        )
+        self.photo_manager = PhotoCaptureManager(photo_capture_config, self.logger)
+        self.logger.info("拍照管理器初始化完成")
 
     def _signal_handler(self, signum, frame) -> None:
         """
@@ -246,7 +244,7 @@ class LitterMonitorSystem:
                     self._update_statistics()
 
         except Exception as e:
-            self.logger.error(f"主循环异常: {e}", exc_info=True)
+            self.logger.error(f"主循环异常: {e}")
         finally:
             self.stop()
 
@@ -276,39 +274,41 @@ class LitterMonitorSystem:
         for track in tracks:
             self.logger.debug(f"  Track ID: {track.track_id}, Bbox: {getattr(track, 'bbox', getattr(track, 'tlwh', 'N/A'))}")
 
-        # 个体识别
-        for track in tracks:
-            if hasattr(track, 'bbox') and track.bbox is not None:
-                # 获取边界框
-                bbox = track.bbox
-                x1, y1, x2, y2 = [int(coord) for coord in [bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]]]
-
-                # 裁剪ROI
-                roi = frame[y1:y2, x1:x2]
-
-                if roi.size > 0:
-                    # 识别
-                    prediction = self.classifier.predict(roi)
-
-                    # 更新分析器
-                    if prediction['confidence'] > 0.5:
-                        self.analyzer.update_cat_info(
-                            track.track_id,
-                            prediction['class_id'],
-                            prediction['class_name']
-                        )
-
         # 行为分析
         fps = self.config.get_camera_config().get('fps', 30)
         completed_events = self.analyzer.update(tracks, fps)
 
-        # 保存完成的事件
-        for event in completed_events:
-            self.logger.info(
-                f"事件完成: {event.cat_name} (ID: {event.cat_id}), "
-                f"时长: {event.duration:.1f}秒"
+        # 拍照管理：检查每个追踪是否需要拍照
+        for track in tracks:
+            # 获取中心点
+            if hasattr(track, 'bbox'):
+                bbox = track.bbox
+                center_x = bbox[0] + bbox[2] / 2
+                center_y = bbox[1] + bbox[3] / 2
+                center = (center_x, center_y)
+            elif hasattr(track, 'tlwh'):
+                tlwh = track.tlwh
+                center_x = tlwh[0] + tlwh[2] / 2
+                center_y = tlwh[1] + tlwh[3] / 2
+                center = (center_x, center_y)
+            else:
+                continue
+
+            # 判断是否在ROI内
+            in_roi = self.analyzer.roi.contains(center)
+
+            # 更新拍照管理器
+            photo_path = self.photo_manager.update(
+                track.track_id,
+                in_roi,
+                frame,
+                fps
             )
-            self.database.insert_event(event.to_dict())
+
+            if photo_path:
+                self.logger.info(f"拍照成功: {photo_path}")
+                # 通知Web前端记录更新
+                self.web_app.notify_records_update()
 
         # 绘制结果
         display_frame = self._draw_results(display_frame, detections, tracks)
@@ -332,73 +332,27 @@ class LitterMonitorSystem:
         Args:
             frame: 输入帧
             detections: 检测列表
-            tracks: 追踪列表
+            tracks: 追踪列表（保留用于行为分析，但不绘制）
 
         Returns:
             绘制后的帧
         """
-        # 获取猫颜色配置
-        cat_colors = self.config.get_cat_colors_config()
-
-        # 绘制行为分析结果
+        # 绘制行为分析结果（ROI区域等）
         frame = self.analyzer.draw_analysis(frame, tracks)
 
-        # 不再绘制检测结果（绿色框），只显示追踪框使画面更清晰
-        # 如需调试可取消下方注释
-        # for detection in detections:
-        #     if hasattr(detection, 'bbox'):
-        #         bbox = detection.bbox
-        #         x1, y1, x2, y2 = [int(v) for v in bbox]
-        #         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
-        #         label = f"Cat: {detection.confidence:.2f}"
-        #         cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        # 只绘制检测结果（绿色Cat框 + 中心点）
+        for detection in detections:
+            if hasattr(detection, 'bbox'):
+                bbox = detection.bbox
+                x1, y1, x2, y2 = [int(v) for v in bbox]
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                label = "Cat"
+                cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-        # 然后绘制追踪结果（使用每只猫的颜色）
-        for track in tracks:
-            if hasattr(track, 'bbox'):
-                bbox = track.bbox
-                x, y, w, h = bbox
-            elif hasattr(track, 'tlwh'):
-                tlwh = track.tlwh
-                x, y, w, h = tlwh
-            else:
-                continue
-
-            # 获取猫名字和颜色
-            cat_name = self.analyzer.get_cat_name_for_track(track.track_id)
-            default_color = (255, 0, 0)  # 默认蓝色
-
-            if cat_name and cat_name in cat_colors:
-                color = cat_colors[cat_name]
-                self.logger.debug(f"Track {track.track_id} 使用颜色 {color} (猫: {cat_name})")
-            else:
-                color = default_color
-                self.logger.debug(f"Track {track.track_id} 使用默认颜色 {color}")
-
-            # 绘制边界框（使用猫的颜色）
-            cv2.rectangle(frame, (int(x), int(y)), (int(x + w), int(y + h)), color, 2)
-
-            # 绘制标签（一直显示猫名字，不管在不在ROI）
-            label = f"ID:{track.track_id}"
-
-            # 显示猫名字（如果有）
-            if cat_name:
-                label += f" {cat_name}"
-            elif track.track_id in self.analyzer.track_states:
-                state = self.analyzer.track_states[track.track_id]
-                # 如果当前事件有猫名字，也显示
-                if state.get('current_event') and state['current_event'].cat_name != '未知':
-                    label += f" {state['current_event'].cat_name}"
-
-            cv2.putText(
-                frame,
-                label,
-                (int(x), int(y - 40)),  # 向上偏移，避免覆盖检测标签
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                color,
-                2
-            )
+                # 绘制中心点
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
+                cv2.circle(frame, (center_x, center_y), 5, (0, 255, 0), -1)
 
         return frame
 
@@ -414,7 +368,7 @@ class LitterMonitorSystem:
             summary = self.database.get_summary_statistics()
             self.web_app.update_statistics(summary)
 
-            self.logger.info(f"统计更新: 总事件数 {summary['total_events']}")
+            self.logger.info(f"统计更新: 总记录数 {summary['total_records']}")
         except Exception as e:
             self.logger.error(f"更新统计失败: {e}")
 

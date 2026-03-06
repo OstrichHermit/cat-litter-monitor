@@ -7,55 +7,247 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #f0f0f0; }
-        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-        .header { background: #333; color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { margin: 0; }
-        .header p { margin: 5px 0 0 0; opacity: 0.8; }
-        .stop-btn { background: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; transition: background 0.3s; }
-        .stop-btn:hover { background: #c82333; }
-        .stop-btn:disabled { background: #6c757d; cursor: not-allowed; }
+        body { font-family: Arial, sans-serif, "Microsoft YaHei", sans-serif; background: #f0f0f0; }
+
+        /* 容器使用固定宽度 */
+        .container { max-width: 1900px; margin: 0 auto; padding: 20px; }
+
+        .header {
+            background: linear-gradient(135deg, #333 0%, #444 100%);
+            color: white;
+            padding: 26px 32px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+        }
+        .header h1 { margin: 0; font-size: 38px; font-weight: bold; }
+        .header p { margin: 7px 0 0 0; opacity: 0.9; font-size: 18px; }
+        .stop-btn {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+            border: none;
+            padding: 14px 26px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 19px;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+        }
+        .stop-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4); }
+        .stop-btn:disabled { background: #6c757d; cursor: not-allowed; transform: none; box-shadow: none; }
+
         .main-content { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
-        .video-container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .video-feed { width: 100%; border-radius: 5px; background: #000; }
-        .info-container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .status { padding: 10px; margin-bottom: 10px; border-radius: 5px; }
-        .status.running { background: #d4edda; color: #155724; }
-        .status.stopped { background: #f8d7da; color: #721c24; }
-        .stats-item { padding: 10px; margin: 5px 0; background: #f8f9fa; border-radius: 5px; }
-        .events-list { max-height: 400px; overflow-y: auto; }
-        .event-item { padding: 10px; margin: 5px 0; background: #e9ecef; border-radius: 5px; }
-        h2 { margin-bottom: 15px; color: #333; }
+
+        .video-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .video-feed { width: 100%; border-radius: 6px; background: #000; }
+
+        .info-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .status {
+            padding: 15px;
+            margin-bottom: 16px;
+            border-radius: 6px;
+            font-size: 19px;
+            font-weight: bold;
+        }
+        .status.running { background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); color: #155724; }
+        .status.stopped { background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%); color: #721c24; }
+
+        /* 记录区域样式 */
+        .records-section { margin-top: 20px; }
+        .records-section h2 {
+            background: linear-gradient(135deg, #333 0%, #444 100%);
+            color: white;
+            padding: 13px 20px;
+            border-radius: 6px 6px 0 0;
+            margin: 0;
+            font-size: 19px;
+            font-weight: bold;
+        }
+        .records-section.today h2 {
+            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+        }
+        .records-section.yesterday h2 {
+            background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+        }
+        .records-content {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 0 0 6px 6px;
+            max-height: 380px;
+            overflow-y: auto;
+        }
+        .records-content::-webkit-scrollbar { width: 8px; }
+        .records-content::-webkit-scrollbar-track { background: #f1f1f1; }
+        .records-content::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        .records-content::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        .stats-summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+            padding: 16px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-bottom: 1px solid #ddd;
+        }
+        .cat-stat {
+            text-align: center;
+            padding: 14px;
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .cat-stat:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+        }
+        .cat-stat .cat-name {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 7px;
+            font-size: 17px;
+        }
+        .cat-stat .cat-count {
+            font-size: 33px;
+            font-weight: bold;
+            color: #28a745;
+        }
+
+        .record-item {
+            padding: 13px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            gap: 13px;
+            transition: background 0.2s;
+        }
+        .record-item:last-child { border-bottom: none; }
+        .record-item:hover { background: #f8f9fa; }
+        .record-time {
+            font-weight: bold;
+            color: #333;
+            min-width: 85px;
+            font-size: 17px;
+        }
+        .record-cat {
+            flex: 1;
+            font-size: 17px;
+        }
+        /* 缩略图使用照片原生比例 */
+        .record-photo {
+            width: 80px;
+            height: auto;
+            max-height: 80px;
+            object-fit: contain;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+            transition: all 0.2s;
+        }
+        .record-photo:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        }
+        .no-data {
+            padding: 28px;
+            text-align: center;
+            color: #6c757d;
+            font-size: 17px;
+        }
+
+        h2 { margin-bottom: 16px; color: #333; font-size: 24px; font-weight: bold; }
+        .video-container h2 { margin-bottom: 16px; font-size: 24px; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <div>
-                <h1>猫厕所监控系统</h1>
-                <p>实时监控和统计</p>
+                <h1>🐱 猫厕所监控系统</h1>
+                <p>实时监控和智能统计</p>
             </div>
-            <button id="stopBtn" class="stop-btn">停止服务</button>
+            <button id="stopBtn" class="stop-btn">⏹ 停止服务</button>
         </div>
 
         <div class="main-content">
             <div class="video-container">
-                <h2>实时视频</h2>
+                <h2>📹 实时视频</h2>
                 <img src="/video_feed" class="video-feed" alt="Video Feed">
             </div>
 
             <div class="info-container">
-                <h2>系统状态</h2>
+                <h2>💡 系统状态</h2>
                 <div id="status" class="status">检查中...</div>
 
-                <h2>今日统计</h2>
-                <div id="statistics">
-                    <p>加载中...</p>
+                <!-- 今日记录 -->
+                <div class="records-section today">
+                    <h2>📅 今日记录</h2>
+                    <div class="records-content">
+                        <div id="todayStats" class="stats-summary">
+                            <div class="cat-stat">
+                                <div class="cat-name">小巫</div>
+                                <div class="cat-count" id="today-小巫">0</div>
+                            </div>
+                            <div class="cat-stat">
+                                <div class="cat-name">猪猪</div>
+                                <div class="cat-count" id="today-猪猪">0</div>
+                            </div>
+                            <div class="cat-stat">
+                                <div class="cat-name">汪三</div>
+                                <div class="cat-count" id="today-汪三">0</div>
+                            </div>
+                            <div class="cat-stat">
+                                <div class="cat-name">猪妞</div>
+                                <div class="cat-count" id="today-猪妞">0</div>
+                            </div>
+                        </div>
+                        <div id="todayRecords">
+                            <div class="no-data">今日暂无记录</div>
+                        </div>
+                    </div>
                 </div>
 
-                <h2>最近事件</h2>
-                <div id="events" class="events-list">
-                    <p>加载中...</p>
+                <!-- 昨日记录 -->
+                <div class="records-section yesterday">
+                    <h2>📆 昨日记录</h2>
+                    <div class="records-content">
+                        <div id="yesterdayStats" class="stats-summary">
+                            <div class="cat-stat">
+                                <div class="cat-name">小巫</div>
+                                <div class="cat-count" id="yesterday-小巫">0</div>
+                            </div>
+                            <div class="cat-stat">
+                                <div class="cat-name">猪猪</div>
+                                <div class="cat-count" id="yesterday-猪猪">0</div>
+                            </div>
+                            <div class="cat-stat">
+                                <div class="cat-name">汪三</div>
+                                <div class="cat-count" id="yesterday-汪三">0</div>
+                            </div>
+                            <div class="cat-stat">
+                                <div class="cat-name">猪妞</div>
+                                <div class="cat-count" id="yesterday-猪妞">0</div>
+                            </div>
+                        </div>
+                        <div id="yesterdayRecords">
+                            <div class="no-data">昨日暂无记录</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -72,38 +264,120 @@
 
         socket.on('status_update', function(data) {
             isRunning = data.running;
+            updateStatus(data.running);
+        });
+
+        socket.on('records_update', function(data) {
+            console.log('Records updated');
+            loadRecords();
+        });
+
+        function updateStatus(running) {
             const statusDiv = document.getElementById('status');
             const stopBtn = document.getElementById('stopBtn');
-            if (data.running) {
+            if (running) {
                 statusDiv.className = 'status running';
-                statusDiv.textContent = '系统运行中';
+                statusDiv.innerHTML = '✅ 系统运行中';
                 stopBtn.disabled = false;
             } else {
                 statusDiv.className = 'status stopped';
-                statusDiv.textContent = '系统已停止';
+                statusDiv.innerHTML = '❌ 系统已停止';
                 stopBtn.disabled = true;
             }
-        });
+        }
 
-        socket.on('statistics_update', function(data) {
-            const statsDiv = document.getElementById('statistics');
-            let html = '';
-            if (data.by_cat) {
-                data.by_cat.forEach(cat => {
-                    html += `<div class="stats-item">
-                        <strong>${cat.cat_name}</strong>: ${cat.event_count} 次
-                        (平均 ${cat.avg_duration.toFixed(1)} 秒)
-                    </div>`;
+        function loadRecords() {
+            fetch('/api/records/today')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        updateTodayRecords(data.today);
+                        updateYesterdayRecords(data.yesterday);
+                    }
+                })
+                .catch(err => {
+                    console.error('Failed to load records:', err);
                 });
-            }
-            statsDiv.innerHTML = html || '<p>暂无数据</p>';
-        });
+        }
 
-        // 停止服务按钮
+        function updateTodayRecords(records) {
+            const cats = ['小巫', '猪猪', '汪三', '猪妞'];
+            const counts = {};
+            cats.forEach(cat => counts[cat] = 0);
+
+            records.forEach(record => {
+                const catName = record.cat_name;
+                if (counts.hasOwnProperty(catName)) {
+                    counts[catName]++;
+                }
+            });
+
+            cats.forEach(cat => {
+                const el = document.getElementById(`today-${cat}`);
+                if (el) el.textContent = counts[cat];
+            });
+
+            const recordsDiv = document.getElementById('todayRecords');
+            if (records.length === 0) {
+                recordsDiv.innerHTML = '<div class="no-data">📭 今日暂无记录</div>';
+            } else {
+                let html = '';
+                records.forEach(record => {
+                    const photoPath = record.photo_path.replace(/^photo\//, '');
+                    const photoUrl = `/static/photo/${photoPath}`;
+                    html += `
+                        <div class="record-item">
+                            <span class="record-time">🕐 ${record.record_time}</span>
+                            <span class="record-cat">🐱 ${record.cat_name}</span>
+                            <img src="${photoUrl}" class="record-photo" onclick="window.open('${photoUrl}', '_blank')" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2RkZCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjE0IiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIj7nvITlm788L3RleHQ+PC9zdmc+'">
+                        </div>
+                    `;
+                });
+                recordsDiv.innerHTML = html;
+            }
+        }
+
+        function updateYesterdayRecords(records) {
+            const cats = ['小巫', '猪猪', '汪三', '猪妞'];
+            const counts = {};
+            cats.forEach(cat => counts[cat] = 0);
+
+            records.forEach(record => {
+                const catName = record.cat_name;
+                if (counts.hasOwnProperty(catName)) {
+                    counts[catName]++;
+                }
+            });
+
+            cats.forEach(cat => {
+                const el = document.getElementById(`yesterday-${cat}`);
+                if (el) el.textContent = counts[cat];
+            });
+
+            const recordsDiv = document.getElementById('yesterdayRecords');
+            if (records.length === 0) {
+                recordsDiv.innerHTML = '<div class="no-data">📭 昨日暂无记录</div>';
+            } else {
+                let html = '';
+                records.forEach(record => {
+                    const photoPath = record.photo_path.replace(/^photo\//, '');
+                    const photoUrl = `/static/photo/${photoPath}`;
+                    html += `
+                        <div class="record-item">
+                            <span class="record-time">🕐 ${record.record_time}</span>
+                            <span class="record-cat">🐱 ${record.cat_name}</span>
+                            <img src="${photoUrl}" class="record-photo" onclick="window.open('${photoUrl}', '_blank')" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2RkZCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjE0IiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIj7nvITlm788L3RleHQ+PC9zdmc+'">
+                        </div>
+                    `;
+                });
+                recordsDiv.innerHTML = html;
+            }
+        }
+
         document.getElementById('stopBtn').addEventListener('click', function() {
             if (confirm('确定要停止系统服务吗？')) {
                 this.disabled = true;
-                this.textContent = '正在停止...';
+                this.innerHTML = '⏳ 正在停止...';
                 fetch('/api/stop', { method: 'POST' })
                     .then(res => res.json())
                     .then(data => {
@@ -115,73 +389,27 @@
                         } else {
                             alert('停止失败: ' + data.message);
                             document.getElementById('stopBtn').disabled = false;
-                            document.getElementById('stopBtn').textContent = '停止服务';
+                            document.getElementById('stopBtn').innerHTML = '⏹ 停止服务';
                         }
                     })
                     .catch(err => {
                         alert('请求失败: ' + err);
                         document.getElementById('stopBtn').disabled = false;
-                        document.getElementById('stopBtn').textContent = '停止服务';
+                        document.getElementById('stopBtn').innerHTML = '⏹ 停止服务';
                     });
             }
         });
 
-        // 定期获取状态
         setInterval(function() {
             fetch('/api/status')
                 .then(res => res.json())
                 .then(data => {
-                    isRunning = data.running;
-                    const statusDiv = document.getElementById('status');
-                    const stopBtn = document.getElementById('stopBtn');
-                    if (data.running) {
-                        statusDiv.className = 'status running';
-                        statusDiv.textContent = '系统运行中';
-                        stopBtn.disabled = false;
-                    } else {
-                        statusDiv.className = 'status stopped';
-                        statusDiv.textContent = '系统已停止';
-                        stopBtn.disabled = true;
-                    }
+                    updateStatus(data.running);
                 });
         }, 5000);
 
-        // 获取统计数据
-        setInterval(function() {
-            fetch('/api/statistics')
-                .then(res => res.json())
-                .then(data => {
-                    const statsDiv = document.getElementById('statistics');
-                    let html = '';
-                    if (data.by_cat) {
-                        data.by_cat.forEach(cat => {
-                            html += `<div class="stats-item">
-                                <strong>${cat.cat_name}</strong>: ${cat.event_count} 次
-                                (平均 ${cat.avg_duration.toFixed(1)} 秒)
-                            </div>`;
-                        });
-                    }
-                    statsDiv.innerHTML = html || '<p>暂无数据</p>';
-                });
-        }, 10000);
-
-        // 获取事件列表
-        setInterval(function() {
-            fetch('/api/events')
-                .then(res => res.json())
-                .then(data => {
-                    const eventsDiv = document.getElementById('events');
-                    let html = '';
-                    data.slice(0, 10).forEach(event => {
-                        const time = new Date(event.enter_time).toLocaleTimeString();
-                        html += `<div class="event-item">
-                            <strong>${event.cat_name}</strong> - ${time}<br>
-                            时长: ${event.duration.toFixed(1)} 秒
-                        </div>`;
-                    });
-                    eventsDiv.innerHTML = html || '<p>暂无事件</p>';
-                });
-        }, 10000);
+        loadRecords();
+        setInterval(loadRecords, 30000);
     </script>
 </body>
 </html>

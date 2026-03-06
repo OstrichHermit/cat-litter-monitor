@@ -36,8 +36,8 @@ class LitterEvent:
 
     Attributes:
         track_id: 追踪ID
-        cat_id: 猫ID（分类器结果）
-        cat_name: 猫名称
+        cat_id: 猫ID（未知时为-1）
+        cat_name: 猫名称（未知时为"未知"）
         enter_time: 进入时间
         exit_time: 离开时间
         duration: 持续时间（秒）
@@ -45,13 +45,13 @@ class LitterEvent:
         end_frame: 结束帧号
     """
     track_id: int
-    cat_id: int
-    cat_name: str
-    enter_time: datetime
-    exit_time: Optional[datetime]
-    duration: float
-    start_frame: int
-    end_frame: Optional[int]
+    cat_id: int = -1
+    cat_name: str = "未知"
+    enter_time: datetime = None
+    exit_time: Optional[datetime] = None
+    duration: float = 0.0
+    start_frame: int = 0
+    end_frame: Optional[int] = None
 
     def is_complete(self) -> bool:
         """
@@ -273,9 +273,7 @@ class BehaviorAnalyzer:
                     'frames_in_roi': 0,
                     'frames_out_roi': 0,
                     'current_event': None,
-                    'last_event_time': None,
-                    'cat_name': None,  # 持久化存储猫名字
-                    'cat_id': -1  # 持久化存储猫ID
+                    'last_event_time': None
                 }
 
             state = self.track_states[track_id]
@@ -334,33 +332,6 @@ class BehaviorAnalyzer:
                     state['frames_in_roi'] = 0
 
         return completed_events
-
-    def update_cat_info(self, track_id: int, cat_id: int, cat_name: str) -> None:
-        """
-        更新事件的猫信息
-
-        Args:
-            track_id: 追踪ID
-            cat_id: 猫ID
-            cat_name: 猫名称
-        """
-        # 更新追踪状态（持久化存储）
-        if track_id in self.track_states:
-            state = self.track_states[track_id]
-            state['cat_name'] = cat_name
-            state['cat_id'] = cat_id
-
-            # 更新当前事件
-            if state['current_event'] is not None:
-                state['current_event'].cat_id = cat_id
-                state['current_event'].cat_name = cat_name
-
-        # 更新最近的事件
-        for event in reversed(self.events):
-            if event.track_id == track_id and event.cat_id == -1:
-                event.cat_id = cat_id
-                event.cat_name = cat_name
-                break
 
     def get_cat_name_for_track(self, track_id: int) -> Optional[str]:
         """
@@ -467,52 +438,15 @@ class BehaviorAnalyzer:
 
         Args:
             frame: 输入帧
-            tracks: 追踪列表
+            tracks: 追踪列表（保留参数以兼容接口，但不使用）
 
         Returns:
             绘制后的帧
         """
         frame_copy = frame.copy()
 
-        # 绘制ROI
+        # 只绘制ROI区域
         frame_copy = self.roi.draw(frame_copy)
-
-        # 绘制追踪状态
-        for track in tracks:
-            track_id = track.track_id
-
-            # 获取中心点
-            if hasattr(track, 'bbox'):
-                bbox = track.bbox
-                center = (int(bbox[0] + bbox[2] / 2), int(bbox[1] + bbox[3] / 2))
-            elif hasattr(track, 'tlwh'):
-                tlwh = track.tlwh
-                center = (int(tlwh[0] + tlwh[2] / 2), int(tlwh[1] + tlwh[3] / 2))
-            else:
-                continue
-
-            # 检查是否在ROI内
-            in_roi = self.roi.contains(center)
-
-            # 绘制中心点
-            color = (0, 255, 0) if in_roi else (0, 0, 255)
-            cv2.circle(frame_copy, center, 5, color, -1)
-
-            # 绘制标签
-            label = f"ID:{track_id}"
-            if in_roi and track_id in self.track_states:
-                state = self.track_states[track_id]
-                label += f" IN:{state['frames_in_roi']}"
-
-            cv2.putText(
-                frame_copy,
-                label,
-                (center[0] + 10, center[1]),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                color,
-                2
-            )
 
         return frame_copy
 

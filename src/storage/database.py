@@ -1,7 +1,8 @@
 """
 数据存储模块
 
-该模块提供SQLite数据库操作，包括事件记录、统计查询等功能。
+该模块提供SQLite数据库操作，包括记录管理、统计查询等功能。
+新架构支持时间点记录和照片路径。
 """
 
 import sqlite3
@@ -16,6 +17,11 @@ class Database:
     数据库管理类
 
     负责SQLite数据库的创建、连接和操作。
+
+    新表结构：
+    - cats: 猫咪信息表
+    - litter_records: 猫砂盆使用记录表（时间点记录）
+    - daily_statistics: 每日统计表
 
     Attributes:
         db_path: 数据库文件路径
@@ -64,19 +70,29 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            # 创建事件表
+            # 创建猫咪表
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS litter_events (
+                CREATE TABLE IF NOT EXISTS cats (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    track_id INTEGER NOT NULL,
+                    name TEXT NOT NULL UNIQUE,
+                    color TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 创建猫砂盆使用记录表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS litter_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     cat_id INTEGER NOT NULL,
                     cat_name TEXT NOT NULL,
-                    enter_time TEXT NOT NULL,
-                    exit_time TEXT,
-                    duration REAL NOT NULL,
-                    start_frame INTEGER NOT NULL,
-                    end_frame INTEGER,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    record_date TEXT NOT NULL,
+                    record_time TEXT NOT NULL,
+                    record_datetime TEXT NOT NULL,
+                    photo_path TEXT NOT NULL,
+                    detected_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (cat_id) REFERENCES cats(id)
                 )
             """)
 
@@ -86,164 +102,225 @@ class Database:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     cat_id INTEGER NOT NULL,
                     cat_name TEXT NOT NULL,
-                    event_date TEXT NOT NULL,
-                    event_count INTEGER NOT NULL,
-                    total_duration REAL NOT NULL,
-                    avg_duration REAL NOT NULL,
+                    record_date TEXT NOT NULL,
+                    record_count INTEGER NOT NULL,
+                    first_time TEXT NOT NULL,
+                    last_time TEXT NOT NULL,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(cat_id, event_date)
+                    UNIQUE(cat_id, record_date),
+                    FOREIGN KEY (cat_id) REFERENCES cats(id)
                 )
             """)
 
             # 创建索引
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_cat_id
-                ON litter_events(cat_id)
+                CREATE INDEX IF NOT EXISTS idx_records_cat_id
+                ON litter_records(cat_id)
             """)
 
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_enter_time
-                ON litter_events(enter_time)
+                CREATE INDEX IF NOT EXISTS idx_records_date
+                ON litter_records(record_date)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_records_datetime
+                ON litter_records(record_datetime)
             """)
 
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_stats_cat_date
-                ON daily_statistics(cat_id, event_date)
+                ON daily_statistics(cat_id, record_date)
             """)
 
-    def insert_event(self, event_dict: Dict) -> int:
+            # 初始化默认猫咪（如果不存在）
+            self._init_default_cats(cursor)
+
+    def _init_default_cats(self, cursor) -> None:
         """
-        插入事件记录
+        初始化默认猫咪数据
 
         Args:
-            event_dict: 事件字典，包含以下键：
-                - track_id: 追踪ID
-                - cat_id: 猫ID
-                - cat_name: 猫名称
-                - enter_time: 进入时间（ISO格式字符串）
-                - exit_time: 离开时间（ISO格式字符串）
-                - duration: 持续时间（秒）
-                - start_frame: 开始帧号
-                - end_frame: 结束帧号
+            cursor: 数据库游标
+        """
+        default_cats = [
+            ('猪猪', '棕色虎斑'),
+            ('汪三', '黑色')
+        ]
+
+        for cat_name, cat_color in default_cats:
+            try:
+                cursor.execute(
+                    "INSERT INTO cats (name, color) VALUES (?, ?)",
+                    (cat_name, cat_color)
+                )
+            except sqlite3.IntegrityError:
+                # 猫咪已存在，跳过
+                pass
+
+    def add_cat(self, name: str, color: Optional[str] = None) -> int:
+        """
+        添加猫咪
+
+        Args:
+            name: 猫咪名称
+            color: 猫咪颜色（可选）
+
+        Returns:
+            插入的猫咪ID
+
+        Raises:
+            sqlite3.IntegrityError: 猫咪名称已存在
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO cats (name, color) VALUES (?, ?)",
+                (name, color)
+            )
+            return cursor.lastrowid
+
+    def get_cat_by_name(self, name: str) -> Optional[Dict]:
+        """
+        根据名称获取猫咪信息
+
+        Args:
+            name: 猫咪名称
+
+        Returns:
+            猫咪信息字典，如果不存在返回None
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM cats WHERE name = ?", (name,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_all_cats(self) -> List[Dict]:
+        """
+        获取所有猫咪
+
+        Returns:
+            猫咪列表
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM cats ORDER BY id")
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def insert_litter_record(
+        self,
+        cat_name: str,
+        record_date: str,
+        record_time: str,
+        photo_path: str
+    ) -> int:
+        """
+        插入猫砂盆使用记录
+
+        Args:
+            cat_name: 猫咪名称
+            record_date: 记录日期（YYYY-MM-DD）
+            record_time: 记录时间（HH:MM:SS）
+            photo_path: 照片路径
 
         Returns:
             插入记录的ID
         """
         with self.get_connection() as conn:
             cursor = conn.cursor()
+
+            # 获取猫咪信息
+            cat = self.get_cat_by_name(cat_name)
+            if not cat:
+                # 如果猫咪不存在，自动创建
+                cat_id = self.add_cat(cat_name, None)
+            else:
+                cat_id = cat['id']
+
+            # 组合日期时间
+            record_datetime = f"{record_date} {record_time}"
+
+            # 插入记录
             cursor.execute("""
-                INSERT INTO litter_events (
-                    track_id, cat_id, cat_name, enter_time, exit_time,
-                    duration, start_frame, end_frame
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO litter_records (
+                    cat_id, cat_name, record_date, record_time,
+                    record_datetime, photo_path
+                ) VALUES (?, ?, ?, ?, ?, ?)
             """, (
-                event_dict['track_id'],
-                event_dict['cat_id'],
-                event_dict['cat_name'],
-                event_dict['enter_time'],
-                event_dict.get('exit_time'),
-                event_dict['duration'],
-                event_dict['start_frame'],
-                event_dict.get('end_frame')
+                cat_id, cat_name, record_date, record_time,
+                record_datetime, photo_path
             ))
+
             return cursor.lastrowid
 
-    def get_events_by_cat(
+    def insert_litter_records_batch(
         self,
-        cat_id: int,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None
-    ) -> List[Dict]:
+        records: List[Dict[str, str]]
+    ) -> List[int]:
         """
-        获取特定猫的事件
+        批量插入猫砂盆使用记录
 
         Args:
-            cat_id: 猫ID
-            start_date: 开始日期
-            end_date: 结束日期
+            records: 记录列表，每条记录包含：
+                - cat_name: 猫咪名称
+                - date: 日期（YYYY-MM-DD）
+                - time: 时间（HH:MM:SS）
+                - photo_path: 照片路径
 
         Returns:
-            事件列表
+            插入记录的ID列表
+        """
+        record_ids = []
+        for record in records:
+            record_id = self.insert_litter_record(
+                cat_name=record['cat_name'],
+                record_date=record['date'],
+                record_time=record['time'],
+                photo_path=record['photo_path']
+            )
+            record_ids.append(record_id)
+        return record_ids
+
+    def get_litter_records(
+        self,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        cat_id: Optional[int] = None,
+        limit: int = 100
+    ) -> List[Dict]:
+        """
+        获取猫砂盆使用记录
+
+        Args:
+            start_date: 开始日期
+            end_date: 结束日期
+            cat_id: 猫咪ID（可选）
+            limit: 返回数量限制
+
+        Returns:
+            记录列表
         """
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            query = "SELECT * FROM litter_events WHERE cat_id = ?"
-            params = [cat_id]
+            query = "SELECT * FROM litter_records WHERE 1=1"
+            params = []
 
             if start_date:
-                query += " AND date(enter_time) >= ?"
+                query += " AND record_date >= ?"
                 params.append(start_date.isoformat())
 
             if end_date:
-                query += " AND date(enter_time) <= ?"
+                query += " AND record_date <= ?"
                 params.append(end_date.isoformat())
-
-            query += " ORDER BY enter_time DESC"
-
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-
-            return [dict(row) for row in rows]
-
-    def get_events_by_date(
-        self,
-        event_date: date,
-        cat_id: Optional[int] = None
-    ) -> List[Dict]:
-        """
-        获取特定日期的事件
-
-        Args:
-            event_date: 日期
-            cat_id: 猫ID（可选）
-
-        Returns:
-            事件列表
-        """
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-
-            query = "SELECT * FROM litter_events WHERE date(enter_time) = ?"
-            params = [event_date.isoformat()]
 
             if cat_id is not None:
                 query += " AND cat_id = ?"
                 params.append(cat_id)
 
-            query += " ORDER BY enter_time DESC"
-
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-
-            return [dict(row) for row in rows]
-
-    def get_recent_events(
-        self,
-        limit: int = 100,
-        cat_id: Optional[int] = None
-    ) -> List[Dict]:
-        """
-        获取最近的事件
-
-        Args:
-            limit: 返回数量
-            cat_id: 猫ID（可选）
-
-        Returns:
-            事件列表
-        """
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-
-            query = "SELECT * FROM litter_events"
-            params = []
-
-            if cat_id is not None:
-                query += " WHERE cat_id = ?"
-                params.append(cat_id)
-
-            query += " ORDER BY enter_time DESC LIMIT ?"
+            query += " ORDER BY record_datetime DESC LIMIT ?"
             params.append(limit)
 
             cursor.execute(query, params)
@@ -251,15 +328,52 @@ class Database:
 
             return [dict(row) for row in rows]
 
+    def get_today_records(self, cat_id: Optional[int] = None) -> List[Dict]:
+        """
+        获取今天的记录
+
+        Args:
+            cat_id: 猫咪ID（可选）
+
+        Returns:
+            记录列表
+        """
+        today = date.today()
+        return self.get_litter_records(
+            start_date=today,
+            end_date=today,
+            cat_id=cat_id,
+            limit=1000
+        )
+
+    def get_yesterday_records(self, cat_id: Optional[int] = None) -> List[Dict]:
+        """
+        获取昨天的记录
+
+        Args:
+            cat_id: 猫咪ID（可选）
+
+        Returns:
+            记录列表
+        """
+        from datetime import timedelta
+        yesterday = date.today() - timedelta(days=1)
+        return self.get_litter_records(
+            start_date=yesterday,
+            end_date=yesterday,
+            cat_id=cat_id,
+            limit=1000
+        )
+
     def get_daily_statistics(
         self,
-        event_date: Optional[date] = None
+        record_date: Optional[date] = None
     ) -> List[Dict]:
         """
         获取每日统计
 
         Args:
-            event_date: 日期，如果为None则返回所有日期的统计
+            record_date: 日期，如果为None则返回所有日期的统计
 
         Returns:
             统计列表
@@ -267,94 +381,56 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            if event_date:
+            if record_date:
                 cursor.execute("""
                     SELECT * FROM daily_statistics
-                    WHERE event_date = ?
+                    WHERE record_date = ?
                     ORDER BY cat_id
-                """, (event_date.isoformat(),))
+                """, (record_date.isoformat(),))
             else:
                 cursor.execute("""
                     SELECT * FROM daily_statistics
-                    ORDER BY event_date DESC, cat_id
+                    ORDER BY record_date DESC, cat_id
                 """)
 
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
-    def get_cat_daily_statistics(
-        self,
-        cat_id: int,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None
-    ) -> List[Dict]:
-        """
-        获取特定猫的每日统计
-
-        Args:
-            cat_id: 猫ID
-            start_date: 开始日期
-            end_date: 结束日期
-
-        Returns:
-            统计列表
-        """
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-
-            query = "SELECT * FROM daily_statistics WHERE cat_id = ?"
-            params = [cat_id]
-
-            if start_date:
-                query += " AND event_date >= ?"
-                params.append(start_date.isoformat())
-
-            if end_date:
-                query += " AND event_date <= ?"
-                params.append(end_date.isoformat())
-
-            query += " ORDER BY event_date DESC"
-
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-
-            return [dict(row) for row in rows]
-
-    def update_daily_statistics(self, event_date: Optional[date] = None) -> None:
+    def update_daily_statistics(self, record_date: Optional[date] = None) -> None:
         """
         更新每日统计
 
         Args:
-            event_date: 日期，如果为None则更新今天的统计
+            record_date: 日期，如果为None则更新今天的统计
         """
-        if event_date is None:
-            event_date = date.today()
+        if record_date is None:
+            record_date = date.today()
 
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
             # 先删除当天的旧统计
             cursor.execute("""
-                DELETE FROM daily_statistics WHERE event_date = ?
-            """, (event_date.isoformat(),))
+                DELETE FROM daily_statistics WHERE record_date = ?
+            """, (record_date.isoformat(),))
 
             # 计算新的统计
             cursor.execute("""
                 INSERT INTO daily_statistics (
-                    cat_id, cat_name, event_date, event_count,
-                    total_duration, avg_duration
+                    cat_id, cat_name, record_date, record_count,
+                    first_time, last_time
                 )
                 SELECT
                     cat_id,
                     cat_name,
-                    date(enter_time) as event_date,
-                    COUNT(*) as event_count,
-                    SUM(duration) as total_duration,
-                    AVG(duration) as avg_duration
-                FROM litter_events
-                WHERE date(enter_time) = ?
-                GROUP BY cat_id, cat_name, date(enter_time)
-            """, (event_date.isoformat(),))
+                    record_date,
+                    COUNT(*) as record_count,
+                    MIN(record_time) as first_time,
+                    MAX(record_time) as last_time
+                FROM litter_records
+                WHERE record_date = ?
+                GROUP BY cat_id, cat_name, record_date
+            """, (record_date.isoformat(),))
 
     def get_summary_statistics(
         self,
@@ -374,31 +450,30 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            query = "SELECT COUNT(*) as total_events FROM litter_events"
+            query = "SELECT COUNT(*) as total_records FROM litter_records"
             params = []
 
             if start_date or end_date:
                 query += " WHERE 1=1"
 
                 if start_date:
-                    query += " AND date(enter_time) >= ?"
+                    query += " AND record_date >= ?"
                     params.append(start_date.isoformat())
 
                 if end_date:
-                    query += " AND date(enter_time) <= ?"
+                    query += " AND record_date <= ?"
                     params.append(end_date.isoformat())
 
             cursor.execute(query, params)
-            total_events = cursor.fetchone()['total_events']
+            total_records = cursor.fetchone()['total_records']
 
             # 按猫统计
             query = """
                 SELECT
                     cat_id,
                     cat_name,
-                    COUNT(*) as event_count,
-                    AVG(duration) as avg_duration
-                FROM litter_events
+                    COUNT(*) as record_count
+                FROM litter_records
             """
             query_params = []
 
@@ -406,26 +481,26 @@ class Database:
                 query += " WHERE 1=1"
 
                 if start_date:
-                    query += " AND date(enter_time) >= ?"
+                    query += " AND record_date >= ?"
                     query_params.append(start_date.isoformat())
 
                 if end_date:
-                    query += " AND date(enter_time) <= ?"
+                    query += " AND record_date <= ?"
                     query_params.append(end_date.isoformat())
 
-            query += " GROUP BY cat_id, cat_name ORDER BY event_count DESC"
+            query += " GROUP BY cat_id, cat_name ORDER BY record_count DESC"
 
             cursor.execute(query, query_params)
             by_cat = [dict(row) for row in cursor.fetchall()]
 
             return {
-                'total_events': total_events,
+                'total_records': total_records,
                 'by_cat': by_cat
             }
 
-    def delete_old_events(self, days: int = 30) -> int:
+    def delete_old_records(self, days: int = 30) -> int:
         """
-        删除旧事件
+        删除旧记录
 
         Args:
             days: 保留天数
@@ -436,8 +511,8 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                DELETE FROM litter_events
-                WHERE date(enter_time) < date('now', '-' || ? || ' days')
+                DELETE FROM litter_records
+                WHERE record_date < date('now', '-' || ? || ' days')
             """, (days,))
             return cursor.rowcount
 

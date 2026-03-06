@@ -4,7 +4,7 @@ Web界面模块
 该模块提供Flask Web应用，用于实时视频流展示和统计数据查看。
 """
 
-from flask import Flask, render_template, Response, jsonify
+from flask import Flask, render_template, Response, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from datetime import datetime, date
@@ -12,6 +12,7 @@ import json
 from typing import Optional, Dict
 import cv2
 import numpy as np
+from pathlib import Path
 
 
 class WebApp:
@@ -34,7 +35,8 @@ class WebApp:
         host: str = '0.0.0.0',
         port: int = 5000,
         debug: bool = False,
-        secret_key: str = 'litter-monitor-secret-key'
+        secret_key: str = 'litter-monitor-secret-key',
+        database=None
     ):
         """
         初始化Web应用
@@ -44,11 +46,13 @@ class WebApp:
             port: 端口
             debug: 调试模式
             secret_key: 密钥
+            database: 数据库实例（可选）
         """
         self.host = host
         self.port = port
         self.debug = debug
         self.stop_callback = None
+        self.database = database
 
         # 创建Flask应用
         self.app = Flask(__name__, template_folder='templates', static_folder='static')
@@ -102,6 +106,60 @@ class WebApp:
             events_data = [e.to_dict() if hasattr(e, 'to_dict') else e for e in self.system_state['events']]
             return jsonify(events_data[-100:])  # 返回最近100条事件
 
+        @self.app.route('/api/records/today')
+        def records_today():
+            """获取今天和昨天的记录"""
+            try:
+                from src.storage.database import Database
+                from src.config import get_config
+
+                config = get_config()
+                database_config = config.get_database_config()
+                db_path = config.get_absolute_path(
+                    database_config.get('path', 'data/litter_monitor.db')
+                )
+                database = Database(db_path=db_path)
+
+                # 获取今天和昨天的记录
+                today_records = database.get_today_records()
+                yesterday_records = database.get_yesterday_records()
+
+                return jsonify({
+                    'success': True,
+                    'today': today_records,
+                    'yesterday': yesterday_records
+                })
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+
+        @self.app.route('/api/records/unidentified')
+        def records_unidentified():
+            """获取未识别的照片列表"""
+            try:
+                from src.storage.photo_manager import PhotoManager
+                from src.config import get_config
+
+                config = get_config()
+                photo_config = config.get_photo_config()
+                photo_base_dir = photo_config.get('photo_base_dir', 'photo')
+
+                photo_manager = PhotoManager(photo_base_dir)
+                photos = photo_manager.get_unidentified_photos()
+
+                return jsonify({
+                    'success': True,
+                    'photos': photos,
+                    'count': len(photos)
+                })
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+
         @self.app.route('/api/stop', methods=['POST'])
         def stop_service():
             """停止系统服务"""
@@ -119,6 +177,37 @@ class WebApp:
                 self._generate_frames(),
                 mimetype='multipart/x-mixed-replace; boundary=frame'
             )
+
+        @self.app.route('/static/photo/<path:filepath>')
+        def serve_photo(filepath):
+            """提供照片文件访问"""
+            try:
+                from src.config import get_config
+                import os
+                config = get_config()
+                photo_config = config.get_photo_config()
+                photo_base_dir = config.get_absolute_path(photo_config.get('photo_base_dir', 'photo'))
+
+                # 构建完整文件路径
+                full_path = os.path.join(photo_base_dir, filepath)
+
+                # 安全检查：确保full_path在photo_base_dir内
+                full_path_resolved = Path(full_path).resolve()
+                photo_dir_resolved = Path(photo_base_dir).resolve()
+
+                if not str(full_path_resolved).startswith(str(photo_dir_resolved)):
+                    return jsonify({'error': 'Invalid path'}), 400
+
+                # 获取目录和文件名
+                filepath_obj = Path(filepath)
+                if len(filepath_obj.parts) > 1:
+                    subdir = filepath_obj.parent
+                    filename = filepath_obj.name
+                    return send_from_directory(Path(photo_base_dir) / subdir, filename)
+                else:
+                    return send_from_directory(photo_base_dir, filepath)
+            except Exception as e:
+                return jsonify({'error': str(e)}), 404
 
         @self.socketio.on('connect')
         def handle_connect():
@@ -218,6 +307,16 @@ class WebApp:
             callback: 停止系统的回调函数
         """
         self.stop_callback = callback
+
+    def notify_records_update(self) -> None:
+        """
+        通知前端记录已更新
+
+        通过SocketIO发送更新通知
+        """
+        self.socketio.emit('records_update', {
+            'timestamp': datetime.now().isoformat()
+        })
 
     def run(self) -> None:
         """
@@ -433,5 +532,8 @@ def create_templates_directory():
 </body>
 </html>'''
 
-    with open(templates_dir / 'index.html', 'w', encoding='utf-8') as f:
-        f.write(html_content)
+    # 只在 index.html 不存在时才创建
+    index_file = templates_dir / 'index.html'
+    if not index_file.exists():
+        with open(index_file, 'w', encoding='utf-8') as f:
+            f.write(html_content)

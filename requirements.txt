@@ -42,6 +42,9 @@ requests>=2.31.0
 # 可选依赖（用于RTSP流）
 ffmpeg-python>=0.2.0
 
+# MCP框架
+fastmcp>=0.1.0
+
 # 开发依赖
 pytest>=7.4.0
 pytest-cov>=4.1.0
