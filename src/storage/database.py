@@ -536,3 +536,20 @@ class Database:
         """
         with self.get_connection() as conn:
             conn.execute("VACUUM")
+
+    def delete_record_by_id(self, record_id: int) -> bool:
+        """
+        根据ID删除单条记录
+
+        Args:
+            record_id: 记录ID
+
+        Returns:
+            是否删除成功
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM litter_records WHERE id = ?
+            """, (record_id,))
+            return cursor.rowcount > 0

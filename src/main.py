@@ -175,6 +175,8 @@ class LitterMonitorSystem:
         )
         # 设置停止回调
         self.web_app.set_stop_callback(self.stop)
+        # 设置重启回调
+        self.web_app.set_restart_callback(self.restart)
         # 创建模板目录
         create_templates_directory()
         self.logger.info(f"Web应用初始化完成: {web_config.get('host')}:{web_config.get('port')}")
@@ -424,6 +426,23 @@ class LitterMonitorSystem:
         cv2.destroyAllWindows()
 
         self.logger.info("系统已停止")
+
+    def restart(self) -> None:
+        """
+        重启系统
+        """
+        self.logger.info("重启系统...")
+
+        # 先停止系统
+        if self.running:
+            self.stop()
+
+        # 等待停止完成
+        import time
+        time.sleep(2)
+
+        # 重新启动系统
+        self.start()
 
 
 def main():
