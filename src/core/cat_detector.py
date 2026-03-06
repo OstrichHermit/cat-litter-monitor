@@ -9,6 +9,11 @@ import numpy as np
 from typing import List, Dict, Tuple, Optional
 from ultralytics import YOLO
 import torch
+import logging
+
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class Detection:
@@ -145,9 +150,31 @@ class CatDetector:
         # 设置设备
         if use_gpu and torch.cuda.is_available():
             self.device = 'cuda'
+            # 启用 cuDNN 优化
+            torch.backends.cudnn.enabled = True
+            torch.backends.cudnn.benchmark = True  # 固定输入尺寸时可加速
+            logger.info("✓ GPU 优化已启用: cuDNN benchmark=True")
         else:
             self.device = 'cpu'
             self.half = False  # CPU不支持half
+            logger.info("✓ 使用 CPU 模式")
+
+        # CUDA Stream 用于异步处理（仅 GPU）
+        self.cuda_stream = None
+        if self.device == 'cuda':
+            self.cuda_stream = torch.cuda.Stream()
+            logger.info(f"✓ CUDA Stream 已创建")
+
+        # 预分配 GPU 内存缓冲（仅 GPU）
+        self.input_buffer = None
+        if self.device == 'cuda' and self.input_size == 640:
+            # 预分配输入张量 (3, 640, 640)
+            self.input_buffer = torch.empty(
+                (1, 3, self.input_size, self.input_size),
+                dtype=torch.float32,
+                device='cuda'
+            )
+            logger.info(f"✓ GPU 内存缓冲已预分配: {self.input_buffer.shape}")
 
         # 加载模型
         self.model = None
@@ -159,14 +186,36 @@ class CatDetector:
         """
         try:
             self.model = YOLO(self.model_path)
-            # YOLO模型需要显式指定设备
-            import torch
+
             if self.device == 'cuda':
                 # 确保模型在GPU上
                 self.model.to('cuda')
-                print(f"✓ YOLO模型已加载到GPU: {torch.cuda.get_device_name(0)}")
+                gpu_name = torch.cuda.get_device_name(0)
+                gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                logger.info(f"✓ YOLO模型已加载到GPU: {gpu_name} ({gpu_memory:.2f}GB)")
+
+                # 预热 GPU（第一次推理会慢，提前执行）
+                logger.info("✓ 正在预热 GPU...")
+                dummy_input = torch.zeros((1, 3, self.input_size, self.input_size), device='cuda')
+                with torch.no_grad():
+                    _ = self.model.predict(
+                        source=dummy_input,
+                        imgsz=self.input_size,
+                        conf=0.25,
+                        iou=0.45,
+                        device='cuda',
+                        half=self.half,
+                        verbose=False
+                    )
+                torch.cuda.synchronize()  # 等待预热完成
+                logger.info("✓ GPU 预热完成")
             else:
-                print(f"✓ YOLO模型已加载到CPU")
+                logger.info("✓ YOLO模型已加载到CPU")
+
+            # 打印 GPU 内存使用情况（仅 GPU）
+            if self.device == 'cuda':
+                self._print_gpu_memory()
+
         except Exception as e:
             raise RuntimeError(f"加载模型失败: {e}")
 
@@ -183,16 +232,14 @@ class CatDetector:
         if self.model is None:
             return []
 
-        # 运行推理
-        results = self.model(
-            frame,
-            imgsz=self.input_size,
-            conf=self.confidence_threshold,
-            iou=self.iou_threshold,
-            device=self.device,
-            half=self.half,
-            verbose=False
-        )
+        # 使用 CUDA Stream 进行异步推理（仅 GPU）
+        if self.device == 'cuda' and self.cuda_stream is not None:
+            with torch.cuda.stream(self.cuda_stream):
+                results = self._inference(frame)
+            # 等待 CUDA 操作完成
+            torch.cuda.synchronize()
+        else:
+            results = self._inference(frame)
 
         detections = []
 
@@ -210,8 +257,14 @@ class CatDetector:
                 if class_id != self.target_class:
                     continue
 
-                # 获取边界框
-                xyxy = box.xyxy[0].cpu().numpy()
+                # 获取边界框（已在 GPU 上，直接转换）
+                xyxy = box.xyxy[0]
+                if self.device == 'cuda':
+                    # GPU 模式：先移到 CPU 再转换
+                    xyxy = xyxy.cpu().numpy()
+                else:
+                    xyxy = xyxy.numpy()
+
                 x1, y1, x2, y2 = float(xyxy[0]), float(xyxy[1]), float(xyxy[2]), float(xyxy[3])
 
                 # 获取置信度
@@ -227,6 +280,43 @@ class CatDetector:
                 detections.append(detection)
 
         return detections
+
+    def _inference(self, frame: np.ndarray):
+        """
+        执行推理
+
+        Args:
+            frame: 输入帧
+
+        Returns:
+            推理结果
+        """
+        return self.model(
+            frame,
+            imgsz=self.input_size,
+            conf=self.confidence_threshold,
+            iou=self.iou_threshold,
+            device=self.device,
+            half=self.half,
+            verbose=False
+        )
+
+    def _print_gpu_memory(self) -> None:
+        """
+        打印 GPU 内存使用情况
+        """
+        if self.device != 'cuda':
+            return
+
+        allocated = torch.cuda.memory_allocated() / 1024**2  # MB
+        reserved = torch.cuda.memory_reserved() / 1024**2  # MB
+        total = torch.cuda.get_device_properties(0).total_memory / 1024**2  # MB
+
+        logger.info(
+            f"📊 GPU 内存使用: {allocated:.2f}MB 已分配 / "
+            f"{reserved:.2f}MB 已保留 / {total:.2f}MB 总计 "
+            f"({allocated/total*100:.1f}%)"
+        )
 
     def detect_with_features(
         self,
@@ -350,3 +440,40 @@ class CatDetector:
         字符串表示
         """
         return f"CatDetector(model={self.model_path}, device={self.device})"
+
+    def get_gpu_memory_info(self) -> Dict[str, float]:
+        """
+        获取 GPU 内存使用信息
+
+        Returns:
+            包含 GPU 内存信息的字典
+        """
+        if self.device != 'cuda':
+            return {
+                'allocated_mb': 0,
+                'reserved_mb': 0,
+                'total_mb': 0,
+                'usage_percent': 0
+            }
+
+        allocated = torch.cuda.memory_allocated() / 1024**2
+        reserved = torch.cuda.memory_reserved() / 1024**2
+        total = torch.cuda.get_device_properties(0).total_memory / 1024**2
+
+        return {
+            'allocated_mb': allocated,
+            'reserved_mb': reserved,
+            'total_mb': total,
+            'usage_percent': (allocated / total) * 100
+        }
+
+    def cleanup_gpu_memory(self) -> None:
+        """
+        清理 GPU 缓存内存
+
+        当检测到 GPU 内存不足时，可以调用此方法释放缓存
+        """
+        if self.device == 'cuda':
+            torch.cuda.empty_cache()
+            logger.info("✓ GPU 缓存已清理")
+            self._print_gpu_memory()
