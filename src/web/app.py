@@ -4,7 +4,7 @@ Web界面模块
 该模块提供Flask Web应用，用于实时视频流展示和统计数据查看。
 """
 
-from flask import Flask, render_template, Response, jsonify, send_from_directory
+from flask import Flask, render_template, Response, jsonify, send_from_directory, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from datetime import datetime, date
@@ -52,6 +52,7 @@ class WebApp:
         self.port = port
         self.debug = debug
         self.stop_callback = None
+        self.restart_callback = None
         self.database = database
 
         # 视频流客户端计数器
@@ -163,6 +164,195 @@ class WebApp:
                     'error': str(e)
                 }), 500
 
+        @self.app.route('/api/records/delete/<int:record_id>', methods=['DELETE'])
+        def delete_record(record_id):
+            """删除单条记录"""
+            try:
+                from src.storage.database import Database
+                from src.config import get_config
+                import os
+
+                config = get_config()
+                database_config = config.get_database_config()
+                db_path = config.get_absolute_path(
+                    database_config.get('path', 'data/litter_monitor.db')
+                )
+                database = Database(db_path=db_path)
+
+                # 获取记录信息（用于删除照片文件）
+                with database.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT photo_path FROM litter_records WHERE id = ?", (record_id,))
+                    record = cursor.fetchone()
+
+                if not record:
+                    return jsonify({
+                        'success': False,
+                        'error': '记录不存在'
+                    }), 404
+
+                photo_path = record['photo_path']
+
+                # 删除数据库记录
+                success = database.delete_record_by_id(record_id)
+
+                if success:
+                    # 尝试删除照片文件
+                    if photo_path:
+                        abs_photo_path = config.get_absolute_path(photo_path)
+                        if os.path.exists(abs_photo_path):
+                            try:
+                                os.remove(abs_photo_path)
+                            except Exception as e:
+                                print(f"删除照片文件失败: {e}")
+
+                    return jsonify({
+                        'success': True,
+                        'message': '删除成功'
+                    })
+                else:
+                    return jsonify({
+                        'success': False,
+                        'error': '删除失败'
+                    }), 500
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+
+        @self.app.route('/api/records/unidentified/delete', methods=['DELETE'])
+        def delete_unidentified_photo():
+            """删除未识别的照片"""
+            try:
+                from src.config import get_config
+                import os
+
+                data = request.get_json()
+                photo_path = data.get('photo_path')
+
+                if not photo_path:
+                    return jsonify({
+                        'success': False,
+                        'error': '缺少照片路径'
+                    }), 400
+
+                # photo_path 是相对路径，格式: YYYY-MM-DD/Unidentified/filename.jpg
+                # 需要加上 photo/ 前缀
+                if not photo_path.startswith('photo/'):
+                    photo_path = f'photo/{photo_path}'
+
+                # 转换为绝对路径
+                config = get_config()
+                abs_photo_path = config.get_absolute_path(photo_path)
+
+                if os.path.exists(abs_photo_path):
+                    os.remove(abs_photo_path)
+                    return jsonify({
+                        'success': True,
+                        'message': '删除成功'
+                    })
+                else:
+                    return jsonify({
+                        'success': False,
+                        'error': f'文件不存在: {abs_photo_path}'
+                    }), 404
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+
+        @self.app.route('/api/records/manual-add', methods=['POST'])
+        def manual_add_record():
+            """手动添加记录（将未识别照片入库）"""
+            try:
+                from src.storage.database import Database
+                from src.config import get_config
+                import os
+                import shutil
+                from datetime import datetime
+
+                data = request.get_json()
+                photo_rel_path = data.get('photo_path')  # 格式: YYYY-MM-DD/Unidentified/filename.jpg
+                cat_name = data.get('cat_name')
+
+                if not photo_rel_path or not cat_name:
+                    return jsonify({
+                        'success': False,
+                        'error': '缺少照片路径或猫咪名称'
+                    }), 400
+
+                # 构建完整路径
+                if not photo_rel_path.startswith('photo/'):
+                    photo_rel_path = f'photo/{photo_rel_path}'
+
+                config = get_config()
+                abs_photo_path = config.get_absolute_path(photo_rel_path)
+
+                if not os.path.exists(abs_photo_path):
+                    return jsonify({
+                        'success': False,
+                        'error': f'照片文件不存在: {abs_photo_path}'
+                    }), 404
+
+                # 从文件名提取日期和时间
+                # 文件名格式: YYYYMMDD_HHMMSS.jpg
+                filename = os.path.basename(abs_photo_path)
+                name_without_ext = os.path.splitext(filename)[0]
+
+                try:
+                    # 解析文件名获取日期时间
+                    record_date = f"{name_without_ext[0:4]}-{name_without_ext[4:6]}-{name_without_ext[6:8]}"
+                    record_time = f"{name_without_ext[9:11]}:{name_without_ext[11:13]}:{name_without_ext[13:15]}"
+                except IndexError:
+                    # 如果文件名格式不对，使用文件修改时间
+                    mtime = os.path.getmtime(abs_photo_path)
+                    dt = datetime.fromtimestamp(mtime)
+                    record_date = dt.strftime('%Y-%m-%d')
+                    record_time = dt.strftime('%H:%M:%S')
+
+                # 移动照片到对应猫咪的文件夹
+                # 从路径中提取日期部分，构建目标路径
+                parts = photo_rel_path.split('/')
+                date_part = parts[1] if len(parts) > 1 else record_date
+                new_photo_rel_path = f"photo/{date_part}/Identified/{cat_name}/{filename}"
+                new_abs_photo_path = config.get_absolute_path(new_photo_rel_path)
+
+                # 创建目标目录并移动文件
+                os.makedirs(os.path.dirname(new_abs_photo_path), exist_ok=True)
+                shutil.move(abs_photo_path, new_abs_photo_path)
+
+                # 插入数据库记录
+                database_config = config.get_database_config()
+                db_path = config.get_absolute_path(
+                    database_config.get('path', 'data/litter_monitor.db')
+                )
+                database = Database(db_path=db_path)
+
+                record_id = database.insert_litter_record(
+                    cat_name=cat_name,
+                    record_date=record_date,
+                    record_time=record_time,
+                    photo_path=new_photo_rel_path
+                )
+
+                # 通知前端记录已更新
+                self.notify_records_update()
+
+                return jsonify({
+                    'success': True,
+                    'message': '入库成功',
+                    'record_id': record_id
+                })
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+
         @self.app.route('/api/stop', methods=['POST'])
         def stop_service():
             """停止系统服务"""
@@ -172,6 +362,16 @@ class WebApp:
                 threading.Thread(target=self.stop_callback, daemon=True).start()
                 return jsonify({'status': 'stopping', 'message': '系统正在停止...'})
             return jsonify({'status': 'error', 'message': '停止回调未设置'}), 500
+
+        @self.app.route('/api/restart', methods=['POST'])
+        def restart_service():
+            """重启系统服务"""
+            if self.restart_callback:
+                # 在新线程中调用重启回调，避免响应超时
+                import threading
+                threading.Thread(target=self.restart_callback, daemon=True).start()
+                return jsonify({'status': 'restarting', 'message': '系统正在重启...'})
+            return jsonify({'status': 'error', 'message': '重启回调未设置'}), 500
 
         @self.app.route('/video_feed')
         def video_feed():
@@ -317,6 +517,15 @@ class WebApp:
             callback: 停止系统的回调函数
         """
         self.stop_callback = callback
+
+    def set_restart_callback(self, callback) -> None:
+        """
+        设置重启回调函数
+
+        Args:
+            callback: 重启系统的回调函数
+        """
+        self.restart_callback = callback
 
     def notify_records_update(self) -> None:
         """
