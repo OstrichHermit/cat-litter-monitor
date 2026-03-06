@@ -172,6 +172,15 @@ class Config:
         """
         return self.config.get('roi', {})
 
+    def get_photo_config(self) -> Dict[str, Any]:
+        """
+        获取拍照配置
+
+        Returns:
+            拍照配置字典
+        """
+        return self.config.get('photo', {})
+
     def get_behavior_config(self) -> Dict[str, Any]:
         """
         获取行为分析配置
