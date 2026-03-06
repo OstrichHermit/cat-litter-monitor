@@ -69,6 +69,7 @@ class LitterMonitorMCPServer:
                 - date: 日期 (YYYY-MM-DD)
                 - time: 时间 (HH:MM:SS)
                 - photo_path: 照片路径
+                - roi_id: ROI区域ID（可选，默认为1）
 
         Returns:
             操作结果字典

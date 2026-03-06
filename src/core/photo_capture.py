@@ -50,6 +50,7 @@ class PhotoCaptureManager:
         self.config = config
         self.track_stay_time: Dict[int, float] = {}
         self.last_photo_time: Dict[int, datetime] = {}
+        self.last_global_photo_time: Optional[datetime] = None  # 全局拍照冷却
         self.logger = logger
 
         # 确保基础目录存在
@@ -89,20 +90,34 @@ class PhotoCaptureManager:
 
             # 检查是否达到最小停留时间
             if stay_time >= self.config.min_stay_seconds:
-                # 检查是否在拍照间隔内
+                # 检查是否在拍照间隔内（同时检查全局冷却和单个 track 冷却）
                 should_capture = False
-                if track_id not in self.last_photo_time:
+
+                # 检查全局冷却（防止不同 track_id 连拍）
+                global_elapsed_ok = True
+                if self.last_global_photo_time is not None:
+                    global_elapsed = (current_time - self.last_global_photo_time).total_seconds()
+                    if global_elapsed < self.config.photo_interval:
+                        global_elapsed_ok = False
+
+                # 检查单个 track 冷却
+                track_elapsed_ok = True
+                if track_id in self.last_photo_time:
+                    track_elapsed = (current_time - self.last_photo_time[track_id]).total_seconds()
+                    if track_elapsed < self.config.photo_interval:
+                        track_elapsed_ok = False
+
+                # 两个冷却都满足才拍照
+                if global_elapsed_ok and track_elapsed_ok:
                     should_capture = True
-                else:
-                    elapsed = (current_time - self.last_photo_time[track_id]).total_seconds()
-                    if elapsed >= self.config.photo_interval:
-                        should_capture = True
 
                 if should_capture:
                     # 拍照
                     photo_path = self._capture_photo(current_frame, track_id)
                     if photo_path:
+                        # 同时更新全局冷却时间和单个 track 时间
                         self.last_photo_time[track_id] = current_time
+                        self.last_global_photo_time = current_time
                         if self.logger:
                             self.logger.info(
                                 f"Track {track_id} 在ROI停留 {stay_time:.1f}秒，"
@@ -168,3 +183,4 @@ class PhotoCaptureManager:
         """
         self.track_stay_time.clear()
         self.last_photo_time.clear()
+        self.last_global_photo_time = None  # 同时清除全局冷却

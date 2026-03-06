@@ -43,6 +43,7 @@ class LitterEvent:
         duration: 持续时间（秒）
         start_frame: 开始帧号
         end_frame: 结束帧号
+        roi_id: ROI区域ID（用于标识是哪个猫砂盆）
     """
     track_id: int
     cat_id: int = -1
@@ -52,6 +53,7 @@ class LitterEvent:
     duration: float = 0.0
     start_frame: int = 0
     end_frame: Optional[int] = None
+    roi_id: int = 1
 
     def is_complete(self) -> bool:
         """
@@ -77,7 +79,8 @@ class LitterEvent:
             'exit_time': self.exit_time.isoformat() if self.exit_time else None,
             'duration': self.duration,
             'start_frame': self.start_frame,
-            'end_frame': self.end_frame
+            'end_frame': self.end_frame,
+            'roi_id': self.roi_id
         }
 
 
@@ -179,6 +182,133 @@ class ROI:
         return frame_copy
 
 
+class MultiROI:
+    """
+    多ROI区域管理类
+
+    管理多个猫砂盆的ROI区域。
+
+    Attributes:
+        rois: ROI对象列表
+        min_frames_in_roi: 在ROI中的最小帧数
+        exit_delay_frames: 离开延迟帧数
+    """
+
+    def __init__(self, rois: Optional[List[ROI]] = None):
+        """
+        初始化多ROI管理器
+
+        Args:
+            rois: ROI对象列表
+        """
+        self.rois = rois or []
+
+    def has_multiple_rois(self) -> bool:
+        """
+        判断是否有多个ROI
+
+        Returns:
+            是否有多个ROI
+        """
+        return len(self.rois) > 1
+
+    def contains_any(self, point: Tuple[float, float]) -> bool:
+        """
+        判断点是否在任一ROI内
+
+        Args:
+            point: 点坐标 (x, y)
+
+        Returns:
+            是否在任一ROI内
+        """
+        return any(roi.contains(point) for roi in self.rois)
+
+    def get_roi_id(self, point: Tuple[float, float]) -> Optional[int]:
+        """
+        获取点所在的ROI ID
+
+        Args:
+            point: 点坐标 (x, y)
+
+        Returns:
+            ROI ID（从1开始），如果不在任何ROI内则返回None
+        """
+        for i, roi in enumerate(self.rois, start=1):
+            if roi.contains(point):
+                return i
+        return None
+
+    def get_roi_by_id(self, roi_id: int) -> Optional[ROI]:
+        """
+        根据ID获取ROI对象
+
+        Args:
+            roi_id: ROI ID（从1开始）
+
+        Returns:
+            ROI对象，如果不存在则返回None
+        """
+        if 1 <= roi_id <= len(self.rois):
+            return self.rois[roi_id - 1]
+        return None
+
+    def draw_all(self, frame: np.ndarray) -> np.ndarray:
+        """
+        在帧上绘制所有ROI
+
+        Args:
+            frame: 输入帧
+
+        Returns:
+            绘制后的帧
+        """
+        frame_copy = frame.copy()
+
+        # 为不同的ROI使用不同的颜色
+        colors = [
+            (0, 255, 0),    # 绿色
+            (255, 0, 0),    # 蓝色
+            (0, 0, 255),    # 红色
+            (255, 255, 0),  # 青色
+            (255, 0, 255),  # 品红色
+        ]
+
+        for i, roi in enumerate(self.rois):
+            color = colors[i % len(colors)]
+
+            if roi.type == 'rectangle':
+                x, y, w, h = roi.rectangle
+                cv2.rectangle(frame_copy, (x, y), (x + w, y + h), color, 2)
+                cv2.putText(
+                    frame_copy,
+                    f'ROI {i + 1}',
+                    (x, y - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.9,
+                    color,
+                    2
+                )
+
+            elif roi.type == 'polygon':
+                polygon = np.array(roi.polygon, dtype=np.int32)
+                cv2.polylines(frame_copy, [polygon], True, color, 2)
+
+                # 绘制标签
+                center = np.mean(roi.polygon, axis=0).astype(int)
+                cv2.putText(
+                    frame_copy,
+                    f'ROI {i + 1}',
+                    tuple(center),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.9,
+                    color,
+                    2
+                )
+
+        return frame_copy
+
+
 class BehaviorAnalyzer:
     """
     行为分析器类
@@ -186,7 +316,7 @@ class BehaviorAnalyzer:
     使用位置法检测猫是否进入猫砂盆区域。
 
     Attributes:
-        roi: ROI对象
+        multi_roi: MultiROI对象，管理多个ROI区域
         min_frames_in_roi: 在ROI中的最小帧数
         exit_delay_frames: 离开延迟帧数
         min_duration: 最小持续时间（秒）
@@ -199,6 +329,7 @@ class BehaviorAnalyzer:
     def __init__(
         self,
         roi: Optional[ROI] = None,
+        multi_roi: Optional[MultiROI] = None,
         min_frames_in_roi: int = 15,
         exit_delay_frames: int = 30,
         min_duration: float = 5.0,
@@ -208,13 +339,21 @@ class BehaviorAnalyzer:
         初始化行为分析器
 
         Args:
-            roi: ROI对象
+            roi: ROI对象（已弃用，保留用于向后兼容）
+            multi_roi: MultiROI对象，管理多个ROI区域
             min_frames_in_roi: 在ROI中的最小帧数（用于判断是否进入）
             exit_delay_frames: 离开延迟帧数（用于判断是否真的离开）
             min_duration: 最小持续时间（秒）
             min_interval: 两次事件最小间隔（秒）
         """
-        self.roi = roi or ROI()
+        # 向后兼容：如果只提供了单个ROI，将其转换为MultiROI
+        if multi_roi is not None:
+            self.multi_roi = multi_roi
+        elif roi is not None:
+            self.multi_roi = MultiROI([roi])
+        else:
+            self.multi_roi = MultiROI([ROI()])
+
         self.min_frames_in_roi = min_frames_in_roi
         self.exit_delay_frames = exit_delay_frames
         self.min_duration = min_duration
@@ -263,8 +402,9 @@ class BehaviorAnalyzer:
             else:
                 continue
 
-            # 判断是否在ROI内
-            in_roi = self.roi.contains(center)
+            # 判断是否在任一ROI内
+            in_roi = self.multi_roi.contains_any(center)
+            roi_id = self.multi_roi.get_roi_id(center) or 1
 
             # 更新追踪状态
             if track_id not in self.track_states:
@@ -273,7 +413,8 @@ class BehaviorAnalyzer:
                     'frames_in_roi': 0,
                     'frames_out_roi': 0,
                     'current_event': None,
-                    'last_event_time': None
+                    'last_event_time': None,
+                    'current_roi_id': None
                 }
 
             state = self.track_states[track_id]
@@ -282,6 +423,10 @@ class BehaviorAnalyzer:
                 # 在ROI内
                 state['frames_in_roi'] += 1
                 state['frames_out_roi'] = 0
+
+                # 通知追踪器在ROI内（还未确认进入）
+                if hasattr(track, 'set_in_roi'):
+                    track.set_in_roi(True)
 
                 # 判断是否进入
                 if not state['in_roi'] and state['frames_in_roi'] >= self.min_frames_in_roi:
@@ -301,14 +446,24 @@ class BehaviorAnalyzer:
                         exit_time=None,
                         duration=0.0,
                         start_frame=self.frame_count,
-                        end_frame=None
+                        end_frame=None,
+                        roi_id=roi_id
                     )
                     state['current_event'] = event
                     state['in_roi'] = True
+                    state['current_roi_id'] = roi_id
+
+                    # 通知追踪器确认ROI进入（延长存活时间）
+                    if hasattr(track, 'confirm_roi_entry'):
+                        track.confirm_roi_entry()
 
             else:
                 # 不在ROI内
                 state['frames_out_roi'] += 1
+
+                # 通知追踪器不在ROI内（但还未确认离开）
+                if hasattr(track, 'set_in_roi'):
+                    track.set_in_roi(False)
 
                 # 判断是否离开
                 if state['in_roi'] and state['frames_out_roi'] >= self.exit_delay_frames:
@@ -330,6 +485,10 @@ class BehaviorAnalyzer:
 
                     state['in_roi'] = False
                     state['frames_in_roi'] = 0
+
+                    # 通知追踪器离开ROI
+                    if hasattr(track, 'exit_roi'):
+                        track.exit_roi()
 
         return completed_events
 
@@ -445,8 +604,8 @@ class BehaviorAnalyzer:
         """
         frame_copy = frame.copy()
 
-        # 只绘制ROI区域
-        frame_copy = self.roi.draw(frame_copy)
+        # 绘制所有ROI区域
+        frame_copy = self.multi_roi.draw_all(frame_copy)
 
         return frame_copy
 
