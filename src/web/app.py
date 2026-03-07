@@ -88,8 +88,23 @@ class WebApp:
 
         @self.app.route('/')
         def index():
-            """主页"""
-            return render_template('index.html')
+            """主页 - 根据设备类型返回不同模板"""
+            from flask import request
+            user_agent = request.headers.get('User-Agent', '').lower()
+
+            # 检测是否是移动设备
+            is_mobile = any(mobile in user_agent for mobile in
+                          ['iphone', 'android', 'ipad', 'mobile', 'ipod'])
+
+            if is_mobile:
+                return render_template('mobile.html')
+            else:
+                return render_template('index.html')
+
+        @self.app.route('/mobile')
+        def mobile():
+            """移动端专用页面（可手动访问）"""
+            return render_template('mobile.html')
 
         @self.app.route('/api/status')
         def status():
