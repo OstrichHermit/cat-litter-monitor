@@ -185,3 +185,4 @@ data/litter_monitor.db
 # Cat litter monitor specific
 photo/
 data/models/yolo26x.pt
+*.db-journal
