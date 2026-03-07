@@ -2,14 +2,14 @@
 拍照管理模块
 
 该模块负责在猫咪进入ROI区域并停留指定时间后自动拍照。
-支持多个ROI区域使用独立的拍照间隔。
+支持多个ROI区域使用独立的拍照间隔和停留时间管理。
 """
 
 import cv2
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, List
-from dataclasses import dataclass, field
+from typing import Optional, Dict
+from dataclasses import dataclass
 
 
 @dataclass
@@ -59,12 +59,14 @@ class PhotoCaptureManager:
     拍照管理器类
 
     监控猫咪在ROI区域的停留时间，当停留时间超过阈值时自动拍照。
-支持每个ROI独立的拍照间隔。
+支持每个ROI独立的拍照间隔和停留时间管理。
+不依赖追踪ID，只基于ROI区域的检测状态。
 
     Attributes:
         config: 拍照配置
-        track_stay_time: 追踪ID到停留时间的映射
-        last_photo_time: 字典，键为 (track_id, roi_index) 元组，值为上次拍照时间
+        roi_stay_time: 每个ROI的累计停留时间（秒），键为roi_index
+        roi_has_detection: 每个ROI当前是否有检测，键为roi_index
+        last_photo_time: 每个ROI的上次拍照时间，键为roi_index
         logger: 日志对象
     """
 
@@ -77,9 +79,8 @@ class PhotoCaptureManager:
             logger: 日志对象
         """
         self.config = config
-        self.track_stay_time: Dict[int, float] = {}
-        # 拍照冷却时间基于 ROI 区域，而不是 track_id
-        # 这样可以确保同一个 ROI 区域内的任何猫都需要等待冷却时间
+        self.roi_stay_time: Dict[int, float] = {}
+        self.roi_has_detection: Dict[int, bool] = {}
         self.last_photo_time: Dict[int, datetime] = {}  # 键为 roi_index
         self.logger = logger
 
@@ -89,17 +90,17 @@ class PhotoCaptureManager:
 
     def update(
         self,
-        track_id: int,
         roi_index: int,
+        has_detection: bool,
         current_frame,
         fps: float = 30.0
     ) -> Optional[str]:
         """
-        更新追踪状态并判断是否需要拍照
+        更新ROI状态并判断是否需要拍照
 
         Args:
-            track_id: 追踪ID
             roi_index: ROI索引（从1开始，0表示不在任何ROI内）
+            has_detection: 该ROI当前是否有检测到猫咪
             current_frame: 当前帧
             fps: 帧率
 
@@ -108,22 +109,24 @@ class PhotoCaptureManager:
         """
         current_time = datetime.now()
 
-        if roi_index > 0:
-            # 在ROI内，累加停留时间
-            if track_id not in self.track_stay_time:
-                self.track_stay_time[track_id] = 0.0
+        if roi_index > 0 and has_detection:
+            # ROI内有检测
+            self.roi_has_detection[roi_index] = True
 
-            self.track_stay_time[track_id] += 1.0 / fps
+            # 初始化停留时间
+            if roi_index not in self.roi_stay_time:
+                self.roi_stay_time[roi_index] = 0.0
 
-            # 判断是否需要拍照
-            stay_time = self.track_stay_time[track_id]
+            # 累加停留时间
+            self.roi_stay_time[roi_index] += 1.0 / fps
 
             # 获取该ROI的拍照间隔
             photo_interval = self.config.get_interval(roi_index)
+            stay_time = self.roi_stay_time[roi_index]
 
             # 检查是否达到最小停留时间
             if stay_time >= self.config.min_stay_seconds:
-                # 检查是否在拍照间隔内（检查该 ROI 的拍照时间，不关心是哪只猫）
+                # 检查是否在拍照间隔内
                 should_capture = True
 
                 if roi_index in self.last_photo_time:
@@ -133,31 +136,33 @@ class PhotoCaptureManager:
 
                 if should_capture:
                     # 拍照
-                    photo_path = self._capture_photo(current_frame, track_id, roi_index)
+                    photo_path = self._capture_photo(current_frame, roi_index)
                     if photo_path:
                         self.last_photo_time[roi_index] = current_time
                         if self.logger:
                             self.logger.info(
-                                f"Track {track_id} 在ROI {roi_index}停留 {stay_time:.1f}秒，"
+                                f"ROI {roi_index}检测到猫咪停留 {stay_time:.1f}秒，"
                                 f"拍照保存: {photo_path}"
                             )
                         return photo_path
 
         else:
-            # 不在ROI内，重置停留时间
-            if track_id in self.track_stay_time:
-                del self.track_stay_time[track_id]
+            # ROI内无检测或roi_index=0
+            if roi_index > 0:
+                self.roi_has_detection[roi_index] = False
+                # 重置该ROI的停留时间
+                if roi_index in self.roi_stay_time:
+                    del self.roi_stay_time[roi_index]
             # 保留 last_photo_time，避免离开ROI后立即返回又重复拍照
 
         return None
 
-    def _capture_photo(self, frame, track_id: int, roi_index: int) -> Optional[str]:
+    def _capture_photo(self, frame, roi_index: int) -> Optional[str]:
         """
         拍照并保存
 
         Args:
             frame: 视频帧
-            track_id: 追踪ID
             roi_index: ROI索引
 
         Returns:
@@ -184,23 +189,10 @@ class PhotoCaptureManager:
                 self.logger.error(f"拍照失败: {e}")
             return None
 
-    def reset_track(self, track_id: int) -> None:
-        """
-        重置追踪状态
-
-        注意：拍照冷却时间基于 ROI 区域，不随 track 重置而清除。
-
-        Args:
-            track_id: 追踪ID
-        """
-        if track_id in self.track_stay_time:
-            del self.track_stay_time[track_id]
-        # 不再清除 last_photo_time，因为拍照间隔是按 ROI 区域的
-        # 不应该因为 track 消失就重置该 ROI 的冷却时间
-
     def reset_all(self) -> None:
         """
-        重置所有追踪状态
+        重置所有状态
         """
-        self.track_stay_time.clear()
+        self.roi_stay_time.clear()
+        self.roi_has_detection.clear()
         self.last_photo_time.clear()

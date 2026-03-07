@@ -146,7 +146,7 @@ def test_photo_capture():
         # 测试拍照（模拟在ROI内停留足够时间）
         fps = 30.0
         for i in range(40):  # 模拟40帧，约1.33秒
-            photo_path = manager.update(track_id=1, in_roi=True, current_frame=frame, fps=fps)
+            photo_path = manager.update(roi_index=1, has_detection=True, current_frame=frame, fps=fps)
             if photo_path:
                 print(f"  ✅ 拍照成功: {photo_path}")
                 break
