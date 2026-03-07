@@ -309,7 +309,15 @@ class LitterMonitorSystem:
         fps = self.config.get_camera_config().get('fps', 30)
         completed_events = self.analyzer.update(tracks, fps)
 
-        # 拍照管理：检查每个追踪是否需要拍照
+        # 拍照管理：检查每个ROI区域是否需要拍照
+        # 统计每个ROI区域是否有检测
+        roi_detection_map = {}  # roi_index -> has_detection
+
+        # 首先标记所有ROI为无检测
+        for i in range(1, len(self.analyzer.multi_roi.rois) + 1):
+            roi_detection_map[i] = False
+
+        # 检查每个track所在的ROI
         for track in tracks:
             # 获取中心点
             if hasattr(track, 'bbox'):
@@ -327,11 +335,14 @@ class LitterMonitorSystem:
 
             # 判断在哪个ROI内
             roi_index = self.analyzer.multi_roi.get_roi_id(center) or 0
+            if roi_index > 0:
+                roi_detection_map[roi_index] = True
 
-            # 更新拍照管理器
+        # 对每个ROI更新拍照管理器
+        for roi_index, has_detection in roi_detection_map.items():
             photo_path = self.photo_manager.update(
-                track.track_id,
                 roi_index,
+                has_detection,
                 frame,
                 fps
             )
