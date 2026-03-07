@@ -414,27 +414,27 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            # 先删除当天的旧统计
+            # 计算新的统计并使用 REPLACE 策略（会先删除冲突的行再插入）
             cursor.execute("""
-                DELETE FROM daily_statistics WHERE record_date = ?
-            """, (record_date.isoformat(),))
-
-            # 计算新的统计
-            cursor.execute("""
-                INSERT INTO daily_statistics (
+                INSERT OR REPLACE INTO daily_statistics (
                     cat_id, cat_name, record_date, record_count,
-                    first_time, last_time
+                    first_time, last_time, created_at
                 )
                 SELECT
-                    cat_id,
-                    cat_name,
-                    record_date,
+                    lr.cat_id,
+                    lr.cat_name,
+                    lr.record_date,
                     COUNT(*) as record_count,
-                    MIN(record_time) as first_time,
-                    MAX(record_time) as last_time
-                FROM litter_records
-                WHERE record_date = ?
-                GROUP BY cat_id, cat_name, record_date
+                    MIN(lr.record_time) as first_time,
+                    MAX(lr.record_time) as last_time,
+                    COALESCE(
+                        (SELECT created_at FROM daily_statistics
+                         WHERE cat_id = lr.cat_id AND record_date = lr.record_date),
+                        CURRENT_TIMESTAMP
+                    ) as created_at
+                FROM litter_records lr
+                WHERE lr.record_date = ?
+                GROUP BY lr.cat_id, lr.cat_name, lr.record_date
             """, (record_date.isoformat(),))
 
     def get_summary_statistics(
@@ -552,4 +552,46 @@ class Database:
             cursor.execute("""
                 DELETE FROM litter_records WHERE id = ?
             """, (record_id,))
+            return cursor.rowcount > 0
+
+    def update_record_cat_name(self, record_id: int, new_cat_name: str) -> bool:
+        """
+        更新记录的猫咪名称
+
+        Args:
+            record_id: 记录ID
+            new_cat_name: 新的猫咪名称
+
+        Returns:
+            是否更新成功
+        """
+        from datetime import datetime
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # 先获取记录的日期（用于更新统计）
+            cursor.execute("""
+                SELECT record_date FROM litter_records WHERE id = ?
+            """, (record_id,))
+            result = cursor.fetchone()
+            record_date = result['record_date'] if result else None
+
+            # 更新猫咪名称
+            cursor.execute("""
+                UPDATE litter_records
+                SET cat_name = ?
+                WHERE id = ?
+            """, (new_cat_name, record_id))
+            conn.commit()
+
+            # 更新每日统计
+            if record_date:
+                # record_date 是字符串，需要转换为 date 对象
+                if isinstance(record_date, str):
+                    record_date_obj = datetime.fromisoformat(record_date).date()
+                else:
+                    record_date_obj = record_date
+                self.update_daily_statistics(record_date_obj)
+
             return cursor.rowcount > 0

@@ -221,6 +221,116 @@ class WebApp:
                     'error': str(e)
                 }), 500
 
+        @self.app.route('/api/records/edit/<int:record_id>', methods=['PUT'])
+        def edit_record(record_id):
+            """编辑记录的猫咪"""
+            try:
+                from src.storage.database import Database
+                from src.config import get_config
+                from src.storage.photo_manager import PhotoManager
+                import os
+                import shutil
+
+                data = request.get_json()
+                new_cat_name = data.get('cat_name')
+
+                if not new_cat_name:
+                    return jsonify({
+                        'success': False,
+                        'error': '缺少猫咪名称'
+                    }), 400
+
+                config = get_config()
+                database_config = config.get_database_config()
+                db_path = config.get_absolute_path(
+                    database_config.get('path', 'data/litter_monitor.db')
+                )
+                database = Database(db_path=db_path)
+
+                # 获取记录信息
+                with database.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT cat_name, photo_path, record_date, record_time FROM litter_records WHERE id = ?",
+                        (record_id,)
+                    )
+                    record = cursor.fetchone()
+
+                if not record:
+                    return jsonify({
+                        'success': False,
+                        'error': '记录不存在'
+                    }), 404
+
+                old_cat_name = record['cat_name']
+                photo_path = record['photo_path']
+                record_date = record['record_date']
+                record_time = record['record_time']
+
+                # 如果猫咪名称没有变化，直接返回成功
+                if old_cat_name == new_cat_name:
+                    return jsonify({
+                        'success': True,
+                        'message': '猫咪名称未变化'
+                    })
+
+                # 先移动照片，再更新数据库
+                photo_moved = False
+                new_photo_path = photo_path  # 默认保持原路径
+
+                if photo_path:
+                    abs_photo_path = config.get_absolute_path(photo_path)
+
+                    if os.path.exists(abs_photo_path):
+                        # 构建新路径：photo/YYYY-MM-DD/Identified/新猫名/文件名
+                        filename = os.path.basename(photo_path)
+                        new_photo_path = f'photo/{record_date}/Identified/{new_cat_name}/{filename}'
+                        new_abs_photo_path = config.get_absolute_path(new_photo_path)
+
+                        try:
+                            # 确保目标目录存在
+                            os.makedirs(os.path.dirname(new_abs_photo_path), exist_ok=True)
+
+                            # 如果目标文件已存在，先删除它
+                            if os.path.exists(new_abs_photo_path):
+                                os.remove(new_abs_photo_path)
+
+                            # 移动照片
+                            shutil.move(abs_photo_path, new_abs_photo_path)
+                            photo_moved = True
+                        except Exception as e:
+                            print(f"移动照片文件失败: {e}")
+                            # 照片移动失败，保持原路径
+                            new_photo_path = photo_path
+                            photo_moved = False
+                    else:
+                        print(f"原照片文件不存在: {abs_photo_path}")
+
+                # 更新数据库中的猫咪名称和照片路径
+                with database.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "UPDATE litter_records SET cat_name = ?, photo_path = ? WHERE id = ?",
+                        (new_cat_name, new_photo_path, record_id)
+                    )
+                    conn.commit()
+
+                # 更新每日统计
+                from datetime import datetime
+                record_date_obj = datetime.fromisoformat(record_date).date() if isinstance(record_date, str) else record_date
+                database.update_daily_statistics(record_date_obj)
+
+                return jsonify({
+                    'success': True,
+                    'message': '修改成功',
+                    'photo_moved': photo_moved
+                })
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+
         @self.app.route('/api/records/unidentified/delete', methods=['DELETE'])
         def delete_unidentified_photo():
             """删除未识别的照片"""
