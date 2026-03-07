@@ -352,8 +352,7 @@ def main():
                         "properties": {
                             "start_date": {"type": "string"},
                             "end_date": {"type": "string"},
-                            "cat_name": {"type": "string"},
-                            "limit": {"type": "integer"}
+                            "cat_name": {"type": "string"}
                         }
                     }
                 ),
@@ -387,7 +386,7 @@ def main():
                     start_date=arguments.get("start_date"),
                     end_date=arguments.get("end_date"),
                     cat_name=arguments.get("cat_name"),
-                    limit=arguments.get("limit", 100)
+                    limit=100
                 )
             elif name == "get_daily_statistics":
                 result = server.get_daily_statistics(
