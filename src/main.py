@@ -239,19 +239,9 @@ class LitterMonitorSystem:
                 ret, frame = self.camera.read()
                 if not ret:
                     consecutive_failures += 1
-                    self.logger.warning(f"读取帧失败 (连续失败{consecutive_failures}次)")
+                    if consecutive_failures >= 50:
+                        self.logger.error(f"读取帧失败 (连续失败{consecutive_failures}次)")
                     time.sleep(0.1)
-
-                    # 如果连续失败太多，尝试重新连接摄像头
-                    if consecutive_failures > 50:
-                        self.logger.error("连续读取失败次数过多，尝试重启摄像头...")
-                        self.camera.stop()
-                        time.sleep(2)
-                        if self.camera.start():
-                            self.logger.info("摄像头重启成功")
-                            consecutive_failures = 0
-                        else:
-                            self.logger.error("摄像头重启失败")
                     continue
 
                 consecutive_failures = 0  # 重置失败计数
@@ -325,13 +315,13 @@ class LitterMonitorSystem:
             else:
                 continue
 
-            # 判断是否在任一ROI内
-            in_roi = self.analyzer.multi_roi.contains_any(center)
+            # 判断在哪个ROI内
+            roi_index = self.analyzer.multi_roi.get_roi_id(center) or 0
 
             # 更新拍照管理器
             photo_path = self.photo_manager.update(
                 track.track_id,
-                in_roi,
+                roi_index,
                 frame,
                 fps
             )
