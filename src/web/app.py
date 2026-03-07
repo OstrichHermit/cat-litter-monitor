@@ -560,9 +560,13 @@ class WebApp:
         Args:
             frame: 视频帧
         """
-        # 只在有客户端观看视频流时才更新帧
-        if self.stream_clients > 0:
-            self.system_state['frame'] = frame.copy()
+        try:
+            # 只在有客户端观看视频流时才更新帧
+            if self.stream_clients > 0:
+                self.system_state['frame'] = frame.copy()
+        except Exception as e:
+            # 静默处理，避免影响主循环
+            pass
 
     def update_detections(self, detections: list) -> None:
         """
@@ -571,10 +575,14 @@ class WebApp:
         Args:
             detections: 检测列表
         """
-        self.system_state['detections'] = [
-            d.to_dict() if hasattr(d, 'to_dict') else d
-            for d in detections
-        ]
+        try:
+            self.system_state['detections'] = [
+                d.to_dict() if hasattr(d, 'to_dict') else d
+                for d in detections
+            ]
+        except Exception as e:
+            # 静默处理，避免影响主循环
+            self.system_state['detections'] = []
 
     def update_tracks(self, tracks: list) -> None:
         """
@@ -583,10 +591,14 @@ class WebApp:
         Args:
             tracks: 追踪列表
         """
-        self.system_state['tracks'] = [
-            {'id': t.track_id, 'bbox': t.bbox if hasattr(t, 'bbox') else t.tlwh.tolist()}
-            for t in tracks
-        ]
+        try:
+            self.system_state['tracks'] = [
+                {'id': t.track_id, 'bbox': t.bbox if hasattr(t, 'bbox') else (t.tlwh.tolist() if hasattr(t, 'tlwh') else [])}
+                for t in tracks
+            ]
+        except Exception as e:
+            # 静默处理，避免影响主循环
+            self.system_state['tracks'] = []
 
     def update_events(self, events: list) -> None:
         """
@@ -595,7 +607,11 @@ class WebApp:
         Args:
             events: 事件列表
         """
-        self.system_state['events'] = events
+        try:
+            self.system_state['events'] = events
+        except Exception as e:
+            # 静默处理，避免影响主循环
+            self.system_state['events'] = []
 
     def update_statistics(self, statistics: Dict) -> None:
         """
@@ -643,9 +659,13 @@ class WebApp:
 
         通过SocketIO发送更新通知
         """
-        self.socketio.emit('records_update', {
-            'timestamp': datetime.now().isoformat()
-        })
+        try:
+            self.socketio.emit('records_update', {
+                'timestamp': datetime.now().isoformat()
+            })
+        except Exception as e:
+            # 静默处理，避免影响主循环
+            pass
 
     def run(self) -> None:
         """
