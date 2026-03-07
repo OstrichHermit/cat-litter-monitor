@@ -78,7 +78,9 @@ class PhotoCaptureManager:
         """
         self.config = config
         self.track_stay_time: Dict[int, float] = {}
-        self.last_photo_time: Dict[tuple, datetime] = {}  # 键为 (track_id, roi_index)
+        # 拍照冷却时间基于 ROI 区域，而不是 track_id
+        # 这样可以确保同一个 ROI 区域内的任何猫都需要等待冷却时间
+        self.last_photo_time: Dict[int, datetime] = {}  # 键为 roi_index
         self.logger = logger
 
         # 确保基础目录存在
@@ -121,12 +123,11 @@ class PhotoCaptureManager:
 
             # 检查是否达到最小停留时间
             if stay_time >= self.config.min_stay_seconds:
-                # 检查是否在拍照间隔内（检查该 track 在该 ROI 的拍照时间）
+                # 检查是否在拍照间隔内（检查该 ROI 的拍照时间，不关心是哪只猫）
                 should_capture = True
 
-                photo_key = (track_id, roi_index)
-                if photo_key in self.last_photo_time:
-                    last_photo_elapsed = (current_time - self.last_photo_time[photo_key]).total_seconds()
+                if roi_index in self.last_photo_time:
+                    last_photo_elapsed = (current_time - self.last_photo_time[roi_index]).total_seconds()
                     if last_photo_elapsed < photo_interval:
                         should_capture = False
 
@@ -134,7 +135,7 @@ class PhotoCaptureManager:
                     # 拍照
                     photo_path = self._capture_photo(current_frame, track_id, roi_index)
                     if photo_path:
-                        self.last_photo_time[photo_key] = current_time
+                        self.last_photo_time[roi_index] = current_time
                         if self.logger:
                             self.logger.info(
                                 f"Track {track_id} 在ROI {roi_index}停留 {stay_time:.1f}秒，"
@@ -187,15 +188,15 @@ class PhotoCaptureManager:
         """
         重置追踪状态
 
+        注意：拍照冷却时间基于 ROI 区域，不随 track 重置而清除。
+
         Args:
             track_id: 追踪ID
         """
         if track_id in self.track_stay_time:
             del self.track_stay_time[track_id]
-        # 删除该 track_id 对应的所有 ROI 的拍照时间
-        keys_to_delete = [key for key in self.last_photo_time if key[0] == track_id]
-        for key in keys_to_delete:
-            del self.last_photo_time[key]
+        # 不再清除 last_photo_time，因为拍照间隔是按 ROI 区域的
+        # 不应该因为 track 消失就重置该 ROI 的冷却时间
 
     def reset_all(self) -> None:
         """
