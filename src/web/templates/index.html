@@ -356,6 +356,16 @@
             gap: 6px;
             flex-shrink: 0;
             max-width: 180px;
+            opacity: 0;
+            transform: translateX(-10px);
+            pointer-events: none;
+            transition: all 0.3s ease;
+        }
+
+        .identify-controls.visible {
+            opacity: 1;
+            transform: translateX(0);
+            pointer-events: auto;
         }
 
         .cat-select {
@@ -405,11 +415,17 @@
         }
 
         /* Delete Toggle Switch */
+        .toggles-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-left: auto;
+        }
+
         .delete-toggle-container {
             display: flex;
             align-items: center;
             gap: 8px;
-            margin-left: auto;
         }
 
         .delete-toggle-label {
@@ -444,6 +460,48 @@
         }
 
         .delete-switch.active::after {
+            transform: translateX(20px);
+        }
+
+        /* Edit Toggle Switch */
+        .edit-toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .edit-toggle-label {
+            font-size: 20px;
+        }
+
+        .edit-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .edit-switch.active {
+            background: var(--primary);
+        }
+
+        .edit-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+
+        .edit-switch.active::after {
             transform: translateX(20px);
         }
 
@@ -621,11 +679,11 @@
         }
 
         .records-section.today .records-content {
-            max-height: 450px;
+            max-height: 390px;
         }
 
         .records-section.yesterday .records-content {
-            max-height: 190px;
+            max-height: 210px;
         }
 
         .records-list {
@@ -658,6 +716,9 @@
 
         .record-cat {
             flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
             font-size: 14px;
             font-weight: 500;
             color: var(--primary);
@@ -762,9 +823,15 @@
             <div class="notification-panel">
                 <div class="notification-header">
                     <h3>📋 未处理记录</h3>
-                    <div class="delete-toggle-container">
-                        <span class="delete-toggle-label">🗑️</span>
-                        <div class="delete-switch" id="notificationDeleteToggle" onclick="toggleDeleteMode('notification')"></div>
+                    <div class="toggles-container">
+                        <div class="edit-toggle-container">
+                            <span class="edit-toggle-label">✏️</span>
+                            <div class="edit-switch" id="notificationEditToggle" onclick="toggleEditMode('notification')"></div>
+                        </div>
+                        <div class="delete-toggle-container">
+                            <span class="delete-toggle-label">🗑️</span>
+                            <div class="delete-switch" id="notificationDeleteToggle" onclick="toggleDeleteMode('notification')"></div>
+                        </div>
                     </div>
                     <button class="notification-close" onclick="closeNotifications()">✕</button>
                 </div>
@@ -795,9 +862,15 @@
                 <section class="records-section today">
                     <div class="card-header">
                         <span>📅 今日记录</span>
-                        <div class="delete-toggle-container">
-                            <span class="delete-toggle-label">🗑️</span>
-                            <div class="delete-switch" id="todayDeleteToggle" onclick="toggleDeleteMode('today')"></div>
+                        <div class="toggles-container">
+                            <div class="edit-toggle-container">
+                                <span class="edit-toggle-label">✏️</span>
+                                <div class="edit-switch" id="todayEditToggle" onclick="toggleEditMode('today')"></div>
+                            </div>
+                            <div class="delete-toggle-container">
+                                <span class="delete-toggle-label">🗑️</span>
+                                <div class="delete-switch" id="todayDeleteToggle" onclick="toggleDeleteMode('today')"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="records-content">
@@ -828,9 +901,15 @@
                 <section class="records-section yesterday">
                     <div class="card-header">
                         <span>📆 昨日记录</span>
-                        <div class="delete-toggle-container">
-                            <span class="delete-toggle-label">🗑️</span>
-                            <div class="delete-switch" id="yesterdayDeleteToggle" onclick="toggleDeleteMode('yesterday')"></div>
+                        <div class="toggles-container">
+                            <div class="edit-toggle-container">
+                                <span class="edit-toggle-label">✏️</span>
+                                <div class="edit-switch" id="yesterdayEditToggle" onclick="toggleEditMode('yesterday')"></div>
+                            </div>
+                            <div class="delete-toggle-container">
+                                <span class="delete-toggle-label">🗑️</span>
+                                <div class="delete-switch" id="yesterdayDeleteToggle" onclick="toggleDeleteMode('yesterday')"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="records-content">
@@ -896,6 +975,13 @@
             notification: false
         };
 
+        // 编辑模式状态
+        const editMode = {
+            today: false,
+            yesterday: false,
+            notification: false
+        };
+
         function toggleDeleteMode(section) {
             deleteMode[section] = !deleteMode[section];
             const toggle = document.getElementById(`${section}DeleteToggle`);
@@ -922,6 +1008,53 @@
                         btn.classList.remove('hidden');
                     } else {
                         btn.classList.add('hidden');
+                    }
+                });
+            }
+        }
+
+        function toggleEditMode(section) {
+            editMode[section] = !editMode[section];
+            const toggle = document.getElementById(`${section}EditToggle`);
+            if (editMode[section]) {
+                toggle.classList.add('active');
+            } else {
+                toggle.classList.remove('active');
+            }
+            // 切换编辑控制面板的显示（使用CSS类获得动效）
+            if (section === 'notification') {
+                const identifyControls = document.querySelectorAll('#notificationContent .identify-controls');
+                identifyControls.forEach(control => {
+                    if (editMode[section]) {
+                        control.style.display = 'flex';
+                        // 延迟添加visible类以触发动画
+                        setTimeout(() => control.classList.add('visible'), 10);
+                    } else {
+                        control.classList.remove('visible');
+                        // 等待动画完成后隐藏
+                        setTimeout(() => {
+                            if (!control.classList.contains('visible')) {
+                                control.style.display = 'none';
+                            }
+                        }, 300);
+                    }
+                });
+            } else {
+                const containerId = section === 'today' ? 'todayRecords' : 'yesterdayRecords';
+                const identifyControls = document.querySelectorAll(`#${containerId} .identify-controls`);
+                identifyControls.forEach(control => {
+                    if (editMode[section]) {
+                        control.style.display = 'flex';
+                        // 延迟添加visible类以触发动画
+                        setTimeout(() => control.classList.add('visible'), 10);
+                    } else {
+                        control.classList.remove('visible');
+                        // 等待动画完成后隐藏
+                        setTimeout(() => {
+                            if (!control.classList.contains('visible')) {
+                                control.style.display = 'none';
+                            }
+                        }, 300);
                     }
                 });
             }
@@ -973,10 +1106,22 @@
                 return `
                     <div class="record">
                         <span class="record-time">${r.record_time}</span>
-                        <span class="record-cat">${r.cat_name}</span>
+                        <span class="record-cat">
+                            ${r.cat_name}
+                            <div class="identify-controls">
+                                <select class="cat-select" id="edit-cat-select-${r.id}">
+                                    <option value="">选择猫咪</option>
+                                    <option value="小巫" ${r.cat_name === '小巫' ? 'selected' : ''}>小巫</option>
+                                    <option value="猪猪" ${r.cat_name === '猪猪' ? 'selected' : ''}>猪猪</option>
+                                    <option value="汪三" ${r.cat_name === '汪三' ? 'selected' : ''}>汪三</option>
+                                    <option value="猪妞" ${r.cat_name === '猪妞' ? 'selected' : ''}>猪妞</option>
+                                </select>
+                                <button class="confirm-btn" onclick="editRecord(${r.id}, '${section}')">确认</button>
+                            </div>
+                        </span>
                         <img src="${photoUrl}" class="record-img"
                              onclick="window.open('${photoUrl}', '_blank')"
-                             onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTIiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiPjwvdGV4dD48L3N2Zz4='"
+                             onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTIiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiPjwvdGV4dD48L3N2Zz4='"
                              alt="照片">
                         <button class="delete-btn ${deleteClass}" onclick="deleteRecord(${r.id}, '${section}')">✕</button>
                     </div>
@@ -1003,8 +1148,66 @@
             }
         }
 
+        async function editRecord(recordId, section) {
+            const select = document.getElementById(`edit-cat-select-${recordId}`);
+            const newCatName = select.value;
+
+            if (!newCatName) {
+                alert('请选择一只猫咪');
+                return;
+            }
+
+            if (!confirm(`确定要将此记录修改为 ${newCatName} 吗？`)) return;
+
+            try {
+                const response = await fetch(`/api/records/edit/${recordId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        cat_name: newCatName
+                    })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    // 刷新记录（会保持编辑模式状态）
+                    await fetch('/api/records/today?t=' + Date.now())
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.success) {
+                                updateRecords('todayRecords', 'today', data.today);
+                                updateRecords('yesterdayRecords', 'yesterday', data.yesterday);
+
+                                // 重新显示编辑控制面板（如果编辑模式是开启的）
+                                setTimeout(() => {
+                                    ['today', 'yesterday'].forEach(sec => {
+                                        if (editMode[sec]) {
+                                            const containerId = sec === 'today' ? 'todayRecords' : 'yesterdayRecords';
+                                            const controls = document.querySelectorAll(`#${containerId} .identify-controls`);
+                                            controls.forEach(control => {
+                                                control.style.display = 'flex';
+                                                // 使用 requestAnimationFrame 确保浏览器已经渲染了 display:flex
+                                                requestAnimationFrame(() => {
+                                                    control.classList.add('visible');
+                                                });
+                                            });
+                                        }
+                                    });
+                                }, 0);
+                            }
+                        });
+                } else {
+                    alert('修改失败: ' + (data.error || '未知错误'));
+                }
+            } catch (err) {
+                alert('修改失败: ' + err);
+            }
+        }
+
         function loadRecords() {
-            fetch('/api/records/today')
+            fetch('/api/records/today?t=' + Date.now())
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
@@ -1121,7 +1324,7 @@
 
         async function loadNotifications() {
             try {
-                const response = await fetch('/api/records/unidentified');
+                const response = await fetch('/api/records/unidentified?t=' + Date.now());
                 const data = await response.json();
 
                 if (data.success) {
@@ -1252,8 +1455,31 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    // 刷新通知列表和今日记录
-                    loadNotifications();
+                    // 刷新通知列表（会保持编辑模式状态）
+                    await fetch('/api/records/unidentified?t=' + Date.now())
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.success) {
+                                notificationCount = data.count;
+                                updateNotificationBadge();
+                                renderNotifications(data.photos);
+
+                                // 重新显示编辑控制面板（如果编辑模式是开启的）
+                                setTimeout(() => {
+                                    if (editMode.notification) {
+                                        const controls = document.querySelectorAll('#notificationContent .identify-controls');
+                                        controls.forEach(control => {
+                                            control.style.display = 'flex';
+                                            requestAnimationFrame(() => {
+                                                control.classList.add('visible');
+                                            });
+                                        });
+                                    }
+                                }, 0);
+                            }
+                        });
+
+                    // 刷新今日和昨日记录
                     loadRecords();
                 } else {
                     alert('入库失败: ' + (data.error || '未知错误'));
