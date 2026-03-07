@@ -235,37 +235,47 @@ class LitterMonitorSystem:
         try:
             consecutive_failures = 0
             while self.running:
-                # 读取帧
-                ret, frame = self.camera.read()
-                if not ret:
-                    consecutive_failures += 1
-                    if consecutive_failures >= 50:
-                        self.logger.error(f"读取帧失败 (连续失败{consecutive_failures}次)")
-                    time.sleep(0.1)
+                try:
+                    # 读取帧
+                    ret, frame = self.camera.read()
+                    if not ret:
+                        consecutive_failures += 1
+                        if consecutive_failures >= 50:
+                            self.logger.error(f"读取帧失败 (连续失败{consecutive_failures}次)")
+                        time.sleep(0.1)
+                        continue
+
+                    consecutive_failures = 0  # 重置失败计数
+                    self.frame_count += 1
+
+                    # 跳帧处理标记
+                    should_process = (self.frame_count % process_every_n_frames == 0)
+
+                    # 每100帧记录一次
+                    if self.frame_count % 100 == 0:
+                        self.logger.info(f"已处理 {self.frame_count} 帧")
+
+                    # 处理帧（只在应该处理的帧上进行完整处理）
+                    if should_process:
+                        processed_frame = self._process_frame(frame)
+                    else:
+                        # 跳帧时只显示原始帧，保持视频流连续性
+                        processed_frame = frame.copy()
+
+                    # 更新Web帧（无论是否处理，都更新视频流）
+                    self.web_app.update_frame(processed_frame)
+
+                except Exception as frame_error:
+                    # 单帧处理异常，记录但继续运行
+                    self.logger.error(f"处理帧时出错 (frame {self.frame_count}): {frame_error}")
+                    import traceback
+                    self.logger.debug(traceback.format_exc())
                     continue
 
-                consecutive_failures = 0  # 重置失败计数
-                self.frame_count += 1
-
-                # 跳帧处理标记
-                should_process = (self.frame_count % process_every_n_frames == 0)
-
-                # 每100帧记录一次
-                if self.frame_count % 100 == 0:
-                    self.logger.info(f"已处理 {self.frame_count} 帧")
-
-                # 处理帧（只在应该处理的帧上进行完整处理）
-                if should_process:
-                    processed_frame = self._process_frame(frame)
-                else:
-                    # 跳帧时只显示原始帧，保持视频流连续性
-                    processed_frame = frame.copy()
-
-                # 更新Web帧（无论是否处理，都更新视频流）
-                self.web_app.update_frame(processed_frame)
-
         except Exception as e:
-            self.logger.error(f"主循环异常: {e}")
+            self.logger.error(f"主循环严重异常: {e}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
         finally:
             self.stop()
 
