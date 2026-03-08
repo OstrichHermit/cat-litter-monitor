@@ -481,22 +481,70 @@ class WebApp:
         @self.app.route('/api/stop', methods=['POST'])
         def stop_service():
             """停止系统服务"""
-            if self.stop_callback:
-                # 在新线程中调用停止回调，避免响应超时
-                import threading
-                threading.Thread(target=self.stop_callback, daemon=True).start()
-                return jsonify({'status': 'stopping', 'message': '系统正在停止...'})
-            return jsonify({'status': 'error', 'message': '停止回调未设置'}), 500
+            try:
+                import subprocess
+                import sys
+                from pathlib import Path
+
+                # 获取项目根目录
+                project_root = Path(__file__).parent.parent.parent
+                stop_script = project_root / 'stop.bat'
+
+                if stop_script.exists():
+                    # 在后台执行停止脚本
+                    if sys.platform == 'win32':
+                        # Windows: 使用 shell=True 并传递字符串
+                        subprocess.Popen(
+                            f'cmd /c "{stop_script}"',
+                            shell=True,
+                            cwd=str(project_root),
+                            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+                        )
+                    else:
+                        subprocess.Popen(
+                            [str(stop_script)],
+                            cwd=str(project_root),
+                            start_new_session=True
+                        )
+                    return jsonify({'status': 'stopping', 'message': '系统正在停止...'})
+                else:
+                    return jsonify({'status': 'error', 'message': f'停止脚本不存在: {stop_script}'}), 500
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': f'停止失败: {str(e)}'}), 500
 
         @self.app.route('/api/restart', methods=['POST'])
         def restart_service():
             """重启系统服务"""
-            if self.restart_callback:
-                # 在新线程中调用重启回调，避免响应超时
-                import threading
-                threading.Thread(target=self.restart_callback, daemon=True).start()
-                return jsonify({'status': 'restarting', 'message': '系统正在重启...'})
-            return jsonify({'status': 'error', 'message': '重启回调未设置'}), 500
+            try:
+                import subprocess
+                import sys
+                from pathlib import Path
+
+                # 获取项目根目录
+                project_root = Path(__file__).parent.parent.parent
+                restart_script = project_root / 'restart.bat'
+
+                if restart_script.exists():
+                    # 在后台执行重启脚本
+                    if sys.platform == 'win32':
+                        # Windows: 使用 shell=True 并传递字符串
+                        subprocess.Popen(
+                            f'cmd /c "{restart_script}"',
+                            shell=True,
+                            cwd=str(project_root),
+                            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+                        )
+                    else:
+                        subprocess.Popen(
+                            [str(restart_script)],
+                            cwd=str(project_root),
+                            start_new_session=True
+                        )
+                    return jsonify({'status': 'restarting', 'message': '系统正在重启...'})
+                else:
+                    return jsonify({'status': 'error', 'message': f'重启脚本不存在: {restart_script}'}), 500
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': f'重启失败: {str(e)}'}), 500
 
         @self.app.route('/video_feed')
         def video_feed():
