@@ -8,6 +8,7 @@ import sys
 import signal
 import time
 import threading
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -67,6 +68,10 @@ class LitterMonitorSystem:
         # 运行标志
         self.running = False
         self.frame_count = 0
+
+        # 状态文件（用于与 manager 通信）
+        self.state_file = project_root / 'data' / 'manager_state.json'
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
 
         # 注册信号处理
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -202,6 +207,26 @@ class LitterMonitorSystem:
         self.logger.info(f"接收到信号 {signum}，正在停止系统...")
         self.stop()
 
+    def _update_manager_state(self, consecutive_failures: int, status: str = 'running') -> None:
+        """
+        更新管理器状态文件
+
+        Args:
+            consecutive_failures: 连续失败次数
+            status: 系统状态
+        """
+        try:
+            state = {
+                'consecutive_failures': consecutive_failures,
+                'last_update': time.time(),
+                'status': status,
+                'frame_count': self.frame_count
+            }
+            with open(self.state_file, 'w', encoding='utf-8') as f:
+                json.dump(state, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            self.logger.error(f"更新管理器状态失败: {e}")
+
     def start(self) -> None:
         """
         启动系统
@@ -242,11 +267,16 @@ class LitterMonitorSystem:
                         consecutive_failures += 1
                         if consecutive_failures >= 50:
                             self.logger.error(f"读取帧失败 (连续失败{consecutive_failures}次)")
+                        # 更新管理器状态
+                        self._update_manager_state(consecutive_failures, 'frame_read_error')
                         time.sleep(0.1)
                         continue
 
                     consecutive_failures = 0  # 重置失败计数
                     self.frame_count += 1
+                    # 更新管理器状态（正常运行）
+                    if self.frame_count % 10 == 0:  # 每10帧更新一次，减少IO
+                        self._update_manager_state(consecutive_failures, 'running')
 
                     # 跳帧处理标记
                     should_process = (self.frame_count % process_every_n_frames == 0)
@@ -423,6 +453,9 @@ class LitterMonitorSystem:
 
         self.logger.info("停止系统...")
         self.running = False
+
+        # 更新管理器状态（停止状态）
+        self._update_manager_state(0, 'stopped')
 
         # 更新Web状态
         self.web_app.set_running(False)
