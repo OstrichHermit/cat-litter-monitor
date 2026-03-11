@@ -309,9 +309,10 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 12px 16px;
+            padding: 12px 40px 12px 16px;
             border-bottom: 1px solid var(--gray-200);
             transition: all 0.3s ease;
+            position: relative;
         }
 
         .notification-item:last-child {
@@ -330,13 +331,13 @@
         }
 
         .notification-item-name {
-            flex: 1;
             display: flex;
             align-items: center;
             gap: 8px;
             font-size: 14px;
             font-weight: 500;
             color: var(--primary);
+            flex-shrink: 0;
         }
 
         .notification-item-img {
@@ -347,11 +348,12 @@
             cursor: pointer;
             transition: all 0.3s ease;
             background: var(--gray-200);
+            flex-shrink: 0;
         }
 
         /* Manual Identify Controls */
         .identify-controls {
-            display: flex;
+            display: none;
             align-items: center;
             gap: 6px;
             flex-shrink: 0;
@@ -363,6 +365,7 @@
         }
 
         .identify-controls.visible {
+            display: flex;
             opacity: 1;
             transform: translateX(0);
             pointer-events: auto;
@@ -510,35 +513,39 @@
             background: var(--danger);
             color: white;
             border: none;
-            min-width: 24px;
-            width: 24px;
-            height: 24px;
-            border-radius: 4px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
             cursor: pointer;
             font-size: 14px;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.3s ease;
-            flex-shrink: 0;
-            opacity: 1;
-            transform: scale(1);
-            pointer-events: auto;
+            opacity: 0;
+            pointer-events: none;
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%) scale(0.8);
+            box-shadow: 0 2px 8px rgba(192, 57, 43, 0.4);
+            z-index: 10;
         }
 
         .delete-btn.hidden {
-            min-width: 0;
-            width: 0;
             opacity: 0;
-            transform: scale(0.8);
             pointer-events: none;
-            margin: 0;
-            padding: 0;
+        }
+
+        .delete-btn:not(.hidden) {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(-50%) scale(1);
         }
 
         .delete-btn:hover {
             background: var(--danger-light);
-            transform: scale(1.15);
+            transform: translateY(-50%) scale(1.1);
         }
 
         /* Main Layout */
@@ -694,9 +701,10 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 12px 16px;
+            padding: 12px 40px 12px 16px;
             border-bottom: 1px solid var(--gray-200);
             transition: all 0.3s ease;
+            position: relative;
         }
 
         .record:last-child {
@@ -715,13 +723,13 @@
         }
 
         .record-cat {
-            flex: 1;
             display: flex;
             align-items: center;
             gap: 8px;
             font-size: 14px;
             font-weight: 500;
             color: var(--primary);
+            flex-shrink: 0;
         }
 
         .record-img {
@@ -732,6 +740,7 @@
             cursor: pointer;
             transition: all 0.3s ease;
             background: var(--gray-200);
+            flex-shrink: 0;
         }
 
         .record-img:hover {
@@ -1103,26 +1112,25 @@
                 const photoPath = r.photo_path.replace(/^photo\//, '');
                 const photoUrl = `/static/photo/${photoPath}`;
                 const deleteClass = deleteMode[section] ? '' : 'hidden';
+                const editClass = editMode[section] ? 'visible' : '';
                 return `
                     <div class="record">
                         <span class="record-time">${r.record_time}</span>
-                        <span class="record-cat">
-                            ${r.cat_name}
-                            <div class="identify-controls">
-                                <select class="cat-select" id="edit-cat-select-${r.id}">
-                                    <option value="">选择猫咪</option>
-                                    <option value="小巫" ${r.cat_name === '小巫' ? 'selected' : ''}>小巫</option>
-                                    <option value="猪猪" ${r.cat_name === '猪猪' ? 'selected' : ''}>猪猪</option>
-                                    <option value="汪三" ${r.cat_name === '汪三' ? 'selected' : ''}>汪三</option>
-                                    <option value="猪妞" ${r.cat_name === '猪妞' ? 'selected' : ''}>猪妞</option>
-                                </select>
-                                <button class="confirm-btn" onclick="editRecord(${r.id}, '${section}')">确认</button>
-                            </div>
-                        </span>
+                        <span class="record-cat">${r.cat_name}</span>
                         <img src="${photoUrl}" class="record-img"
                              onclick="window.open('${photoUrl}', '_blank')"
                              onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTIiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiPjwvdGV4dD48L3N2Zz4='"
                              alt="照片">
+                        <div class="identify-controls ${editClass}">
+                            <select class="cat-select" id="edit-cat-select-${r.id}">
+                                <option value="">选择猫咪</option>
+                                <option value="小巫" ${r.cat_name === '小巫' ? 'selected' : ''}>小巫</option>
+                                <option value="猪猪" ${r.cat_name === '猪猪' ? 'selected' : ''}>猪猪</option>
+                                <option value="汪三" ${r.cat_name === '汪三' ? 'selected' : ''}>汪三</option>
+                                <option value="猪妞" ${r.cat_name === '猪妞' ? 'selected' : ''}>猪妞</option>
+                            </select>
+                            <button class="confirm-btn" onclick="editRecord(${r.id}, '${section}')">确认</button>
+                        </div>
                         <button class="delete-btn ${deleteClass}" onclick="deleteRecord(${r.id}, '${section}')">✕</button>
                     </div>
                 `;
@@ -1172,32 +1180,7 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    // 刷新记录（会保持编辑模式状态）
-                    await fetch('/api/records/today?t=' + Date.now())
-                        .then(r => r.json())
-                        .then(data => {
-                            if (data.success) {
-                                updateRecords('todayRecords', 'today', data.today);
-                                updateRecords('yesterdayRecords', 'yesterday', data.yesterday);
-
-                                // 重新显示编辑控制面板（如果编辑模式是开启的）
-                                setTimeout(() => {
-                                    ['today', 'yesterday'].forEach(sec => {
-                                        if (editMode[sec]) {
-                                            const containerId = sec === 'today' ? 'todayRecords' : 'yesterdayRecords';
-                                            const controls = document.querySelectorAll(`#${containerId} .identify-controls`);
-                                            controls.forEach(control => {
-                                                control.style.display = 'flex';
-                                                // 使用 requestAnimationFrame 确保浏览器已经渲染了 display:flex
-                                                requestAnimationFrame(() => {
-                                                    control.classList.add('visible');
-                                                });
-                                            });
-                                        }
-                                    });
-                                }, 0);
-                            }
-                        });
+                    loadRecords();
                 } else {
                     alert('修改失败: ' + (data.error || '未知错误'));
                 }
@@ -1378,27 +1361,26 @@
                         const timeMatch = photo.filename.match(/_(\d{2})(\d{2})/);
                         const timeStr = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : '';
 
-                                        const deleteClass = deleteMode.notification ? '' : 'hidden';
+                        const deleteClass = deleteMode.notification ? '' : 'hidden';
+                        const editClass = editMode.notification ? 'visible' : '';
                         return `
                             <div class="notification-item">
                                 <span class="notification-item-time">${photo.date} ${timeStr}</span>
-                                <span class="notification-item-name">
-                                    未识别
-                                    <div class="identify-controls">
-                                        <select class="cat-select" id="cat-select-${photo.filename}">
-                                            <option value="">选择猫咪</option>
-                                            <option value="小巫">小巫</option>
-                                            <option value="猪猪">猪猪</option>
-                                            <option value="汪三">汪三</option>
-                                            <option value="猪妞">猪妞</option>
-                                        </select>
-                                        <button class="confirm-btn" onclick='manualIdentify("${relativePath}", "${photo.filename}")'>确认</button>
-                                    </div>
-                                </span>
+                                <span class="notification-item-name">未识别</span>
                                 <img src="${photoUrl}" class="notification-item-img"
                                      onclick="window.open('${photoUrl}', '_blank')"
                                      onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iMzYiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjM2IiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTIiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiPjwvdGV4dD48L3N2Zz4='"
                                      alt="照片">
+                                <div class="identify-controls ${editClass}">
+                                    <select class="cat-select" id="cat-select-${photo.filename}">
+                                        <option value="">选择猫咪</option>
+                                        <option value="小巫">小巫</option>
+                                        <option value="猪猪">猪猪</option>
+                                        <option value="汪三">汪三</option>
+                                        <option value="猪妞">猪妞</option>
+                                    </select>
+                                    <button class="confirm-btn" onclick='manualIdentify("${relativePath}", "${photo.filename}")'>确认</button>
+                                </div>
                                 <button class="delete-btn ${deleteClass}" onclick='deleteUnidentifiedPhoto("${relativePath}")'>✕</button>
                             </div>
                         `;
@@ -1455,31 +1437,7 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    // 刷新通知列表（会保持编辑模式状态）
-                    await fetch('/api/records/unidentified?t=' + Date.now())
-                        .then(r => r.json())
-                        .then(data => {
-                            if (data.success) {
-                                notificationCount = data.count;
-                                updateNotificationBadge();
-                                renderNotifications(data.photos);
-
-                                // 重新显示编辑控制面板（如果编辑模式是开启的）
-                                setTimeout(() => {
-                                    if (editMode.notification) {
-                                        const controls = document.querySelectorAll('#notificationContent .identify-controls');
-                                        controls.forEach(control => {
-                                            control.style.display = 'flex';
-                                            requestAnimationFrame(() => {
-                                                control.classList.add('visible');
-                                            });
-                                        });
-                                    }
-                                }, 0);
-                            }
-                        });
-
-                    // 刷新今日和昨日记录
+                    loadNotifications();
                     loadRecords();
                 } else {
                     alert('入库失败: ' + (data.error || '未知错误'));
