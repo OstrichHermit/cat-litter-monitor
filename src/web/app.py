@@ -393,9 +393,9 @@ class WebApp:
             """手动添加记录（将未识别照片入库）"""
             try:
                 from src.storage.database import Database
+                from src.storage.photo_manager import PhotoManager
                 from src.config import get_config
                 import os
-                import shutil
                 from datetime import datetime
 
                 data = request.get_json()
@@ -437,16 +437,27 @@ class WebApp:
                     record_date = dt.strftime('%Y-%m-%d')
                     record_time = dt.strftime('%H:%M:%S')
 
-                # 移动照片到对应猫咪的文件夹
-                # 从路径中提取日期部分，构建目标路径
+                # 使用PhotoManager移动照片
+                photo_config = config.get_photo_config()
+                photo_base_dir = photo_config.get('photo_base_dir', 'photo')
+                photo_manager = PhotoManager(photo_base_dir)
+
+                # 从路径中提取日期部分
                 parts = photo_rel_path.split('/')
                 date_part = parts[1] if len(parts) > 1 else record_date
-                new_photo_rel_path = f"photo/{date_part}/Identified/{cat_name}/{filename}"
-                new_abs_photo_path = config.get_absolute_path(new_photo_rel_path)
 
-                # 创建目标目录并移动文件
-                os.makedirs(os.path.dirname(new_abs_photo_path), exist_ok=True)
-                shutil.move(abs_photo_path, new_abs_photo_path)
+                # 移动照片到对应猫咪的文件夹
+                new_photo_rel_path = photo_manager.move_photo(
+                    photo_rel_path,
+                    cat_name,
+                    date_part
+                )
+
+                if not new_photo_rel_path:
+                    return jsonify({
+                        'success': False,
+                        'error': '照片移动失败'
+                    }), 500
 
                 # 插入数据库记录
                 database_config = config.get_database_config()

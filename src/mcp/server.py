@@ -97,34 +97,113 @@ class LitterMonitorMCPServer:
                         'error': f'记录 {i+1} 的猫咪名字无效: "{cat_name}"。必须是: 小巫、猪猪、汪三、猪妞'
                     }
 
-            # 先移动照片，获取新路径
+            # 统计每张照片被引用的次数
+            photo_usage = {}  # photo_path -> count
+            for record in records:
+                photo_path = record['photo_path']
+                photo_usage[photo_path] = photo_usage.get(photo_path, 0) + 1
+
+            # 处理照片（移动或复制）
             moved_photos = []
             photo_path_mapping = {}  # 旧路径 -> 新路径的映射
+            photo_copy_indices = {}  # photo_path -> 该照片当前是第几份副本
+            first_moved_paths = {}  # photo_path -> 第一只猫移动后的完整路径
 
             for record in records:
                 photo_path = record['photo_path']
                 cat_name = record['cat_name']
                 date_str = record['date']
 
-                # 移动照片从 Unidentified 到 Identified
-                new_path = self.photo_manager.move_photo(
-                    photo_path, cat_name, date_str
-                )
-                if new_path:
-                    photo_path_mapping[photo_path] = new_path
-                    moved_photos.append({
-                        'old_path': photo_path,
-                        'new_path': new_path
-                    })
+                # 检查这张照片是否被多次引用
+                usage_count = photo_usage[photo_path]
+
+                if usage_count == 1:
+                    # 只被引用一次，直接移动
+                    new_path = self.photo_manager.move_photo(
+                        photo_path, cat_name, date_str
+                    )
+                    if new_path:
+                        photo_path_mapping[photo_path] = new_path
+                        moved_photos.append({
+                            'old_path': photo_path,
+                            'new_path': new_path,
+                            'action': 'move'
+                        })
+                else:
+                    # 被多次引用，需要复制
+                    # 初始化副本计数器
+                    if photo_path not in photo_copy_indices:
+                        photo_copy_indices[photo_path] = 0
+
+                    # 第一只猫：移动照片
+                    if photo_copy_indices[photo_path] == 0:
+                        new_path = self.photo_manager.move_photo(
+                            photo_path, cat_name, date_str
+                        )
+                        if new_path:
+                            # 保存移动后的完整路径，供后续复制使用
+                            first_moved_paths[photo_path] = new_path
+                            photo_path_mapping[photo_path] = new_path
+                            moved_photos.append({
+                                'old_path': photo_path,
+                                'new_path': new_path,
+                                'action': 'move'
+                            })
+                        photo_copy_indices[photo_path] += 1
+                    else:
+                        # 后续的猫：从第一只猫移动后的位置复制照片
+                        if photo_path in first_moved_paths:
+                            # 转换相对路径为绝对路径
+                            from src.config import get_config
+                            config = get_config()
+                            source_abs_path = config.get_absolute_path(first_moved_paths[photo_path])
+
+                            copy_suffix = f"_copy{photo_copy_indices[photo_path]}"
+                            new_path = self.photo_manager.copy_photo_from_source(
+                                source_abs_path, cat_name, date_str, copy_suffix
+                            )
+                            if new_path:
+                                # 使用新路径创建映射（键是原路径+索引，以区分不同副本）
+                                map_key = f"{photo_path}_{photo_copy_indices[photo_path]}"
+                                photo_path_mapping[map_key] = new_path
+                                moved_photos.append({
+                                    'old_path': photo_path,
+                                    'new_path': new_path,
+                                    'action': 'copy',
+                                    'copy_suffix': copy_suffix
+                                })
+                        photo_copy_indices[photo_path] += 1
 
             # 使用新路径创建记录
             records_with_new_paths = []
+            photo_current_copy = {}  # photo_path -> 当前副本索引
+
             for record in records:
                 new_record = record.copy()
                 old_path = record['photo_path']
-                # 如果照片被移动了，使用新路径
-                if old_path in photo_path_mapping:
-                    new_record['photo_path'] = photo_path_mapping[old_path]
+                usage_count = photo_usage[old_path]
+
+                if usage_count == 1:
+                    # 只被引用一次，使用移动后的路径
+                    if old_path in photo_path_mapping:
+                        new_record['photo_path'] = photo_path_mapping[old_path]
+                else:
+                    # 被多次引用，需要追踪副本索引
+                    if old_path not in photo_current_copy:
+                        photo_current_copy[old_path] = 0
+
+                    # 第一只猫使用移动后的路径
+                    if photo_current_copy[old_path] == 0:
+                        if old_path in photo_path_mapping:
+                            new_record['photo_path'] = photo_path_mapping[old_path]
+                    else:
+                        # 后续的猫使用复制后的路径
+                        map_key = f"{old_path}_{photo_current_copy[old_path]}"
+                        if map_key in photo_path_mapping:
+                            new_record['photo_path'] = photo_path_mapping[map_key]
+
+                    photo_current_copy[old_path] += 1
+
                 records_with_new_paths.append(new_record)
 
             # 插入数据库（使用更新后的路径）
