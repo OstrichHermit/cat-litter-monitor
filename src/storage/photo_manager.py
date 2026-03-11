@@ -123,6 +123,106 @@ class PhotoManager:
             self.logger.error(f"移动照片失败: {e}")
             return None
 
+    def copy_photo(
+        self,
+        photo_path: str,
+        cat_name: str,
+        date_str: str,
+        suffix: str = ""
+    ) -> Optional[str]:
+        """
+        复制照片从 Unidentified 到 Identified（用于多只猫共享一张照片的情况）
+
+        Args:
+            photo_path: 原照片路径
+            cat_name: 猫咪名称
+            date_str: 日期字符串 (YYYY-MM-DD)
+            suffix: 文件名后缀，用于区分副本（例如：_copy1, _copy2）
+
+        Returns:
+            新照片路径，如果失败返回None
+        """
+        try:
+            # 源文件
+            source_path = Path(photo_path)
+            if not source_path.exists():
+                self.logger.warning(f"照片文件不存在: {photo_path}")
+                return None
+
+            # 目标目录：photo/YYYY-MM-DD/Identified/猫名/
+            target_dir = self.photo_base_dir / date_str / "Identified" / cat_name
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            # 构建新的文件名（添加后缀）
+            stem = source_path.stem
+            extension = source_path.suffix
+            new_filename = f"{stem}{suffix}{extension}"
+            target_path = target_dir / new_filename
+
+            # 复制文件
+            shutil.copy2(str(source_path), str(target_path))
+
+            self.logger.info(f"照片复制成功: {source_path} -> {target_path}")
+
+            # 返回相对路径，使用正斜杠（Unix风格）而不是反斜杠（Windows风格）
+            # Web界面期望的格式：photo/YYYY-MM-DD/Identified/猫名/文件名.jpg
+            relative_path = target_path.relative_to(self.photo_base_dir.parent)
+            return relative_path.as_posix()
+
+        except Exception as e:
+            self.logger.error(f"复制照片失败: {e}")
+            return None
+
+    def copy_photo_from_source(
+        self,
+        source_abs_path: str,
+        cat_name: str,
+        date_str: str,
+        suffix: str = ""
+    ) -> Optional[str]:
+        """
+        从源文件复制照片到目标猫咪目录（用于多只猫共享一张照片的情况）
+
+        Args:
+            source_abs_path: 源照片的绝对路径
+            cat_name: 猫咪名称
+            date_str: 日期字符串 (YYYY-MM-DD)
+            suffix: 文件名后缀，用于区分副本（例如：_copy1, _copy2）
+
+        Returns:
+            新照片路径，如果失败返回None
+        """
+        try:
+            # 源文件（绝对路径）
+            source_path = Path(source_abs_path)
+            if not source_path.exists():
+                self.logger.warning(f"源照片文件不存在: {source_abs_path}")
+                return None
+
+            # 目标目录：photo/YYYY-MM-DD/Identified/猫名/
+            target_dir = self.photo_base_dir / date_str / "Identified" / cat_name
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            # 构建新的文件名（添加后缀）
+            stem = source_path.stem
+            extension = source_path.suffix
+            new_filename = f"{stem}{suffix}{extension}"
+            target_path = target_dir / new_filename
+
+            # 复制文件
+            shutil.copy2(str(source_path), str(target_path))
+
+            self.logger.info(f"照片复制成功: {source_path} -> {target_path}")
+
+            # 返回相对路径，使用正斜杠（Unix风格）而不是反斜杠（Windows风格）
+            # Web界面期望的格式：photo/YYYY-MM-DD/Identified/猫名/文件名.jpg
+            relative_path = target_path.relative_to(self.photo_base_dir.parent)
+            return relative_path.as_posix()
+
+        except Exception as e:
+            self.logger.error(f"从源文件复制照片失败: {e}")
+            return None
+
     def move_photos_batch(
         self,
         photo_records: List[Dict[str, str]]
