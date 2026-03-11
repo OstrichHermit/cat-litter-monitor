@@ -417,11 +417,6 @@ class ObjectTracker:
         if len(confirmed_tracks) > 1:
             self._remove_duplicate_tracks(confirmed_tracks)
 
-        # 调试信息：检测到多个track时记录
-        if len(confirmed_tracks) > 1:
-            track_info = ", ".join([f"ID={t.track_id}(hits={t.hits},age={t.age})" for t in confirmed_tracks])
-            logger.warning(f"检测到多个已确认track: {track_info}")
-
         return result_tracks
 
     def _match_detections_to_tracks(
