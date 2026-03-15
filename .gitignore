@@ -188,3 +188,4 @@ data/models/yolo26x.pt
 *.db-journal
 logs/litter_monitor.log.1
 data/manager_state.json
+/logs
