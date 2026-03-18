@@ -192,12 +192,11 @@ class ProcessManager:
                 self.logger.info(f"执行重启脚本: {self.restart_script}")
 
                 # 使用 subprocess 在后台执行重启脚本
-                # 这样即使 manager 进程结束，重启脚本也能继续执行
+                # 参考 discord bridge 的调用方式，使用 cmd /c
                 subprocess.Popen(
-                    [str(self.restart_script)],
-                    shell=True,
+                    ["cmd", "/c", str(self.restart_script)],
                     cwd=str(project_root),
-                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+                    creationflags=subprocess.CREATE_NEW_CONSOLE
                 )
 
                 self.logger.info("重启脚本已启动")
