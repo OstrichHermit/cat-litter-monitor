@@ -1,29 +1,84 @@
 """
 Web界面模块
 
-该模块提供Flask Web应用，用于实时视频流展示和统计数据查看。
+该模块提供FastAPI Web应用，用于实时视频流展示和统计数据查看。
 """
 
-from flask import Flask, render_template, Response, jsonify, send_from_directory, request
-from flask_cors import CORS
-from flask_socketio import SocketIO, emit
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from datetime import datetime, date
 import json
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 import cv2
 import numpy as np
 from pathlib import Path
+import asyncio
+
+
+class ConnectionManager:
+    """
+    WebSocket连接管理器
+
+    管理所有活跃的WebSocket连接，支持广播消息。
+    """
+
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        """接受新的WebSocket连接"""
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        """移除WebSocket连接"""
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        """向所有连接广播消息"""
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                disconnected.append(connection)
+        for conn in disconnected:
+            self.disconnect(conn)
+
+    def broadcast_sync(self, message: dict):
+        """
+        同步方式广播消息（供非async上下文调用）
+        尝试获取或创建事件循环来发送消息
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 如果事件循环已在运行，创建一个Task
+                asyncio.ensure_future(self.broadcast(message))
+            else:
+                loop.run_until_complete(self.broadcast(message))
+        except RuntimeError:
+            # 没有事件循环，尝试创建新的
+            try:
+                asyncio.run(self.broadcast(message))
+            except Exception:
+                pass
+        except Exception:
+            pass
 
 
 class WebApp:
     """
     Web应用类
 
-    负责Flask应用的创建和路由配置。
+    负责FastAPI应用的创建和路由配置。
 
     Attributes:
-        app: Flask应用实例
-        socketio: SocketIO实例
+        app: FastAPI应用实例
+        manager: WebSocket连接管理器
         host: 主机地址
         port: 端口
         debug: 调试模式
@@ -58,15 +113,23 @@ class WebApp:
         # 视频流客户端计数器
         self.stream_clients = 0
 
-        # 创建Flask应用
-        self.app = Flask(__name__, template_folder='templates', static_folder='static')
-        self.app.config['SECRET_KEY'] = secret_key
+        # 模板和静态文件目录
+        self.templates_dir = Path(__file__).parent / 'templates'
+
+        # 创建FastAPI应用
+        self.app = FastAPI()
 
         # 启用CORS
-        CORS(self.app)
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
-        # 创建SocketIO
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
+        # 创建WebSocket连接管理器
+        self.manager = ConnectionManager()
 
         # 存储系统状态
         self.system_state = {
@@ -81,52 +144,57 @@ class WebApp:
         # 注册路由
         self._register_routes()
 
+        # 挂载静态文件目录
+        self.app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
+
     def _register_routes(self) -> None:
         """
         注册路由
         """
 
-        @self.app.route('/')
-        def index():
+        @self.app.get('/')
+        async def index(request: Request):
             """主页 - 根据设备类型返回不同模板"""
-            from flask import request
-            user_agent = request.headers.get('User-Agent', '').lower()
+            user_agent = request.headers.get('user-agent', '').lower()
 
             # 检测是否是移动设备
             is_mobile = any(mobile in user_agent for mobile in
                           ['iphone', 'android', 'ipad', 'mobile', 'ipod'])
 
             if is_mobile:
-                return render_template('mobile.html')
+                template_path = self.templates_dir / 'mobile.html'
             else:
-                return render_template('index.html')
+                template_path = self.templates_dir / 'index.html'
 
-        @self.app.route('/mobile')
-        def mobile():
+            return FileResponse(str(template_path))
+
+        @self.app.get('/mobile')
+        async def mobile():
             """移动端专用页面（可手动访问）"""
-            return render_template('mobile.html')
+            template_path = self.templates_dir / 'mobile.html'
+            return FileResponse(str(template_path))
 
-        @self.app.route('/api/status')
-        def status():
+        @self.app.get('/api/status')
+        async def status():
             """获取系统状态"""
-            return jsonify({
+            return JSONResponse({
                 'running': self.system_state['running'],
                 'timestamp': datetime.now().isoformat()
             })
 
-        @self.app.route('/api/statistics')
-        def statistics():
+        @self.app.get('/api/statistics')
+        async def statistics():
             """获取统计数据"""
-            return jsonify(self.system_state['statistics'])
+            return JSONResponse(self.system_state['statistics'])
 
-        @self.app.route('/api/events')
-        def events():
+        @self.app.get('/api/events')
+        async def events():
             """获取事件列表"""
             events_data = [e.to_dict() if hasattr(e, 'to_dict') else e for e in self.system_state['events']]
-            return jsonify(events_data[-100:])  # 返回最近100条事件
+            return JSONResponse(events_data[-100:])  # 返回最近100条事件
 
-        @self.app.route('/api/records/today')
-        def records_today():
+        @self.app.get('/api/records/today')
+        async def records_today():
             """获取今天和昨天的记录"""
             try:
                 from src.storage.database import Database
@@ -143,19 +211,19 @@ class WebApp:
                 today_records = database.get_today_records()
                 yesterday_records = database.get_yesterday_records()
 
-                return jsonify({
+                return JSONResponse({
                     'success': True,
                     'today': today_records,
                     'yesterday': yesterday_records
                 })
             except Exception as e:
-                return jsonify({
+                return JSONResponse({
                     'success': False,
                     'error': str(e)
-                }), 500
+                }, status_code=500)
 
-        @self.app.route('/api/records/unidentified')
-        def records_unidentified():
+        @self.app.get('/api/records/unidentified')
+        async def records_unidentified():
             """获取未识别的照片列表"""
             try:
                 from src.storage.photo_manager import PhotoManager
@@ -168,19 +236,19 @@ class WebApp:
                 photo_manager = PhotoManager(photo_base_dir)
                 photos = photo_manager.get_unidentified_photos()
 
-                return jsonify({
+                return JSONResponse({
                     'success': True,
                     'photos': photos,
                     'count': len(photos)
                 })
             except Exception as e:
-                return jsonify({
+                return JSONResponse({
                     'success': False,
                     'error': str(e)
-                }), 500
+                }, status_code=500)
 
-        @self.app.route('/api/records/delete/<int:record_id>', methods=['DELETE'])
-        def delete_record(record_id):
+        @self.app.delete('/api/records/delete/{record_id}')
+        async def delete_record(record_id: int):
             """删除单条记录"""
             try:
                 from src.storage.database import Database
@@ -201,10 +269,10 @@ class WebApp:
                     record = cursor.fetchone()
 
                 if not record:
-                    return jsonify({
+                    return JSONResponse({
                         'success': False,
                         'error': '记录不存在'
-                    }), 404
+                    }, status_code=404)
 
                 photo_path = record['photo_path']
 
@@ -221,23 +289,23 @@ class WebApp:
                             except Exception as e:
                                 print(f"删除照片文件失败: {e}")
 
-                    return jsonify({
+                    return JSONResponse({
                         'success': True,
                         'message': '删除成功'
                     })
                 else:
-                    return jsonify({
+                    return JSONResponse({
                         'success': False,
                         'error': '删除失败'
-                    }), 500
+                    }, status_code=500)
             except Exception as e:
-                return jsonify({
+                return JSONResponse({
                     'success': False,
                     'error': str(e)
-                }), 500
+                }, status_code=500)
 
-        @self.app.route('/api/records/edit/<int:record_id>', methods=['PUT'])
-        def edit_record(record_id):
+        @self.app.put('/api/records/edit/{record_id}')
+        async def edit_record(request: Request, record_id: int):
             """编辑记录的猫咪"""
             try:
                 from src.storage.database import Database
@@ -246,14 +314,14 @@ class WebApp:
                 import os
                 import shutil
 
-                data = request.get_json()
+                data = await request.json()
                 new_cat_name = data.get('cat_name')
 
                 if not new_cat_name:
-                    return jsonify({
+                    return JSONResponse({
                         'success': False,
                         'error': '缺少猫咪名称'
-                    }), 400
+                    }, status_code=400)
 
                 config = get_config()
                 database_config = config.get_database_config()
@@ -272,10 +340,10 @@ class WebApp:
                     record = cursor.fetchone()
 
                 if not record:
-                    return jsonify({
+                    return JSONResponse({
                         'success': False,
                         'error': '记录不存在'
-                    }), 404
+                    }, status_code=404)
 
                 old_cat_name = record['cat_name']
                 photo_path = record['photo_path']
@@ -284,7 +352,7 @@ class WebApp:
 
                 # 如果猫咪名称没有变化，直接返回成功
                 if old_cat_name == new_cat_name:
-                    return jsonify({
+                    return JSONResponse({
                         'success': True,
                         'message': '猫咪名称未变化'
                     })
@@ -335,32 +403,32 @@ class WebApp:
                 record_date_obj = datetime.fromisoformat(record_date).date() if isinstance(record_date, str) else record_date
                 database.update_daily_statistics(record_date_obj)
 
-                return jsonify({
+                return JSONResponse({
                     'success': True,
                     'message': '修改成功',
                     'photo_moved': photo_moved
                 })
             except Exception as e:
-                return jsonify({
+                return JSONResponse({
                     'success': False,
                     'error': str(e)
-                }), 500
+                }, status_code=500)
 
-        @self.app.route('/api/records/unidentified/delete', methods=['DELETE'])
-        def delete_unidentified_photo():
+        @self.app.delete('/api/records/unidentified/delete')
+        async def delete_unidentified_photo(request: Request):
             """删除未识别的照片"""
             try:
                 from src.config import get_config
                 import os
 
-                data = request.get_json()
+                data = await request.json()
                 photo_path = data.get('photo_path')
 
                 if not photo_path:
-                    return jsonify({
+                    return JSONResponse({
                         'success': False,
                         'error': '缺少照片路径'
-                    }), 400
+                    }, status_code=400)
 
                 # photo_path 是相对路径，格式: YYYY-MM-DD/Unidentified/filename.jpg
                 # 需要加上 photo/ 前缀
@@ -373,23 +441,23 @@ class WebApp:
 
                 if os.path.exists(abs_photo_path):
                     os.remove(abs_photo_path)
-                    return jsonify({
+                    return JSONResponse({
                         'success': True,
                         'message': '删除成功'
                     })
                 else:
-                    return jsonify({
+                    return JSONResponse({
                         'success': False,
                         'error': f'文件不存在: {abs_photo_path}'
-                    }), 404
+                    }, status_code=404)
             except Exception as e:
-                return jsonify({
+                return JSONResponse({
                     'success': False,
                     'error': str(e)
-                }), 500
+                }, status_code=500)
 
-        @self.app.route('/api/records/manual-add', methods=['POST'])
-        def manual_add_record():
+        @self.app.post('/api/records/manual-add')
+        async def manual_add_record(request: Request):
             """手动添加记录（将未识别照片入库）"""
             try:
                 from src.storage.database import Database
@@ -398,15 +466,15 @@ class WebApp:
                 import os
                 from datetime import datetime
 
-                data = request.get_json()
+                data = await request.json()
                 photo_rel_path = data.get('photo_path')  # 格式: YYYY-MM-DD/Unidentified/filename.jpg
                 cat_name = data.get('cat_name')
 
                 if not photo_rel_path or not cat_name:
-                    return jsonify({
+                    return JSONResponse({
                         'success': False,
                         'error': '缺少照片路径或猫咪名称'
-                    }), 400
+                    }, status_code=400)
 
                 # 构建完整路径
                 if not photo_rel_path.startswith('photo/'):
@@ -416,10 +484,10 @@ class WebApp:
                 abs_photo_path = config.get_absolute_path(photo_rel_path)
 
                 if not os.path.exists(abs_photo_path):
-                    return jsonify({
+                    return JSONResponse({
                         'success': False,
                         'error': f'照片文件不存在: {abs_photo_path}'
-                    }), 404
+                    }, status_code=404)
 
                 # 从文件名提取日期和时间
                 # 文件名格式: YYYYMMDD_HHMMSS.jpg
@@ -454,10 +522,10 @@ class WebApp:
                 )
 
                 if not new_photo_rel_path:
-                    return jsonify({
+                    return JSONResponse({
                         'success': False,
                         'error': '照片移动失败'
-                    }), 500
+                    }, status_code=500)
 
                 # 插入数据库记录
                 database_config = config.get_database_config()
@@ -476,7 +544,7 @@ class WebApp:
                 # 通知前端记录已更新
                 self.notify_records_update()
 
-                return jsonify({
+                return JSONResponse({
                     'success': True,
                     'message': '入库成功',
                     'record_id': record_id
@@ -484,13 +552,13 @@ class WebApp:
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                return jsonify({
+                return JSONResponse({
                     'success': False,
                     'error': str(e)
-                }), 500
+                }, status_code=500)
 
-        @self.app.route('/api/stop', methods=['POST'])
-        def stop_service():
+        @self.app.post('/api/stop')
+        async def stop_service():
             """停止系统服务"""
             try:
                 import subprocess
@@ -517,14 +585,14 @@ class WebApp:
                             cwd=str(project_root),
                             start_new_session=True
                         )
-                    return jsonify({'status': 'stopping', 'message': '系统正在停止...'})
+                    return JSONResponse({'status': 'stopping', 'message': '系统正在停止...'})
                 else:
-                    return jsonify({'status': 'error', 'message': f'停止脚本不存在: {stop_script}'}), 500
+                    return JSONResponse({'status': 'error', 'message': f'停止脚本不存在: {stop_script}'}, status_code=500)
             except Exception as e:
-                return jsonify({'status': 'error', 'message': f'停止失败: {str(e)}'}), 500
+                return JSONResponse({'status': 'error', 'message': f'停止失败: {str(e)}'}, status_code=500)
 
-        @self.app.route('/api/restart', methods=['POST'])
-        def restart_service():
+        @self.app.post('/api/restart')
+        async def restart_service():
             """重启系统服务"""
             try:
                 import subprocess
@@ -551,22 +619,22 @@ class WebApp:
                             cwd=str(project_root),
                             start_new_session=True
                         )
-                    return jsonify({'status': 'restarting', 'message': '系统正在重启...'})
+                    return JSONResponse({'status': 'restarting', 'message': '系统正在重启...'})
                 else:
-                    return jsonify({'status': 'error', 'message': f'重启脚本不存在: {restart_script}'}), 500
+                    return JSONResponse({'status': 'error', 'message': f'重启脚本不存在: {restart_script}'}, status_code=500)
             except Exception as e:
-                return jsonify({'status': 'error', 'message': f'重启失败: {str(e)}'}), 500
+                return JSONResponse({'status': 'error', 'message': f'重启失败: {str(e)}'}, status_code=500)
 
-        @self.app.route('/video_feed')
-        def video_feed():
+        @self.app.get('/video_feed')
+        async def video_feed():
             """视频流"""
-            return Response(
+            return StreamingResponse(
                 self._generate_frames(),
-                mimetype='multipart/x-mixed-replace; boundary=frame'
+                media_type='multipart/x-mixed-replace; boundary=frame'
             )
 
-        @self.app.route('/static/photo/<path:filepath>')
-        def serve_photo(filepath):
+        @self.app.get('/static/photo/{filepath:path}')
+        async def serve_photo(filepath: str):
             """提供照片文件访问"""
             try:
                 from src.config import get_config
@@ -583,28 +651,33 @@ class WebApp:
                 photo_dir_resolved = Path(photo_base_dir).resolve()
 
                 if not str(full_path_resolved).startswith(str(photo_dir_resolved)):
-                    return jsonify({'error': 'Invalid path'}), 400
+                    return JSONResponse({'error': 'Invalid path'}, status_code=400)
 
-                # 获取目录和文件名
-                filepath_obj = Path(filepath)
-                if len(filepath_obj.parts) > 1:
-                    subdir = filepath_obj.parent
-                    filename = filepath_obj.name
-                    return send_from_directory(Path(photo_base_dir) / subdir, filename)
-                else:
-                    return send_from_directory(photo_base_dir, filepath)
+                if not full_path_resolved.exists():
+                    return JSONResponse({'error': 'File not found'}, status_code=404)
+
+                return FileResponse(str(full_path_resolved))
             except Exception as e:
-                return jsonify({'error': str(e)}), 404
+                return JSONResponse({'error': str(e)}, status_code=404)
 
-        @self.socketio.on('connect')
-        def handle_connect():
-            """处理客户端连接"""
-            emit('connected', {'data': 'Connected to Litter Monitor'})
-
-        @self.socketio.on('disconnect')
-        def handle_disconnect():
-            """处理客户端断开"""
-            print('Client disconnected')
+        @self.app.websocket('/ws')
+        async def websocket_endpoint(websocket: WebSocket):
+            """WebSocket端点"""
+            await self.manager.connect(websocket)
+            try:
+                # 发送连接成功消息
+                await websocket.send_json({
+                    'type': 'connected',
+                    'data': 'Connected to Litter Monitor'
+                })
+                # 保持连接，等待客户端消息（心跳）
+                while True:
+                    await websocket.receive_text()
+            except WebSocketDisconnect:
+                self.manager.disconnect(websocket)
+                print('Client disconnected')
+            except Exception:
+                self.manager.disconnect(websocket)
 
     def _generate_frames(self):
         """
@@ -697,7 +770,10 @@ class WebApp:
         self.system_state['statistics'] = statistics
 
         # 通过WebSocket发送更新
-        self.socketio.emit('statistics_update', statistics)
+        self.manager.broadcast_sync({
+            'type': 'statistics_update',
+            'data': statistics
+        })
 
     def set_running(self, running: bool) -> None:
         """
@@ -707,7 +783,10 @@ class WebApp:
             running: 是否运行中
         """
         self.system_state['running'] = running
-        self.socketio.emit('status_update', {'running': running})
+        self.manager.broadcast_sync({
+            'type': 'status_update',
+            'data': {'running': running}
+        })
 
     def set_stop_callback(self, callback) -> None:
         """
@@ -731,11 +810,14 @@ class WebApp:
         """
         通知前端记录已更新
 
-        通过SocketIO发送更新通知
+        通过WebSocket发送更新通知
         """
         try:
-            self.socketio.emit('records_update', {
-                'timestamp': datetime.now().isoformat()
+            self.manager.broadcast_sync({
+                'type': 'records_update',
+                'data': {
+                    'timestamp': datetime.now().isoformat()
+                }
             })
         except Exception as e:
             # 静默处理，避免影响主循环
@@ -745,12 +827,12 @@ class WebApp:
         """
         运行Web应用
         """
-        self.socketio.run(
+        import uvicorn
+        uvicorn.run(
             self.app,
             host=self.host,
             port=self.port,
-            debug=self.debug,
-            allow_unsafe_werkzeug=True
+            log_level="debug" if self.debug else "info"
         )
 
 
