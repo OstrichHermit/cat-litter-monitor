@@ -26,6 +26,169 @@
     --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Smooth theme transitions */
+body, .mobile-header, .mobile-content, .tab-content, .bottom-nav, .tab-btn,
+.stat-card, .stat-count, .record-item, .notification-sheet, .notification-item,
+.cat-select, .confirm-btn, .delete-btn, .status-overlay, .empty-state,
+.theme-toggle-mobile {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Dark Theme */
+[data-theme="dark"] {
+    --primary: #4a6785;
+    --primary-light: #5a7a9a;
+    --success: #3daa6e;
+    --success-light: #4dc87e;
+    --danger: #c4504a;
+    --danger-light: #d4625c;
+    --gray-50: #0f0f1a;
+    --gray-100: #0f0f1a;
+    --gray-200: #2a2a4a;
+    --gray-300: #3a3a5a;
+    --gray-400: #4a4a6a;
+    --gray-600: #a0a0b0;
+    --gray-800: #e0e0e0;
+    --gray-900: #e0e0e0;
+    --shadow: 0 2px 12px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
+    --shadow-lg: 0 8px 30px rgba(0,0,0,0.5);
+}
+
+[data-theme="dark"] body {
+    background: #0f0f1a;
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] .mobile-header {
+    background: linear-gradient(135deg, #12122a, #1a1a38);
+}
+
+[data-theme="dark"] .monitor-controls {
+    background: #0f0f1a;
+}
+
+[data-theme="dark"] .stats-header {
+    background: #1a1a2e;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .stats-title {
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] .stats-toggle {
+    color: #a0a0b0;
+}
+
+[data-theme="dark"] .cat-card {
+    background: #1a1a2e;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .cat-name {
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] .cat-label {
+    color: #a0a0b0;
+}
+
+[data-theme="dark"] .records-date-header {
+    background: linear-gradient(135deg, #1e1e38, #252542);
+}
+
+[data-theme="dark"] .records-date {
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] .record-item {
+    background: #1a1a2e;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .record-time {
+    color: #a0a0b0;
+}
+
+[data-theme="dark"] .record-cat {
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] .record-thumb {
+    background: #2a2a4a;
+}
+
+[data-theme="dark"] .cat-select {
+    background: #252542;
+    border-color: #3a3a5a;
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] .bottom-nav {
+    background: #1a1a2e;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .nav-item {
+    color: #a0a0b0;
+}
+
+[data-theme="dark"] .nav-item.active {
+    color: #7ab0d4;
+}
+
+[data-theme="dark"] .modal-content {
+    background: #1a1a2e;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+}
+
+[data-theme="dark"] .modal-header {
+    background: linear-gradient(135deg, #12122a, #1a1a38);
+}
+
+[data-theme="dark"] .notification-item {
+    background: #1a1a2e;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .notification-time {
+    color: #a0a0b0;
+}
+
+[data-theme="dark"] .notification-name {
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] .notification-img {
+    background: #2a2a4a;
+}
+
+[data-theme="dark"] .notification-empty {
+    color: #a0a0b0;
+}
+
+[data-theme="dark"] .empty-state {
+    color: #a0a0b0;
+}
+
+[data-theme="dark"] .toggle-switch {
+    background: #3a3a5a;
+}
+
+[data-theme="dark"] .loading-spinner {
+    border-color: #2a2a4a;
+    border-top-color: #5a7a9a;
+}
+
+/* Theme Toggle Button (Mobile) */
+.theme-toggle-mobile {
+    font-size: 18px !important;
+    padding: 8px 12px !important;
+    min-width: 40px;
+    justify-content: center;
+}
+
 * {
     margin: 0;
     padding: 0;
