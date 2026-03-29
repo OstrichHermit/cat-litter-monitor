@@ -1070,3 +1070,103 @@ body {
     width: 300px;
     height: 300px;
 }
+
+/* Unidentifiable badge */
+.notification-name.unidentifiable {
+    color: #e67e22;
+}
+
+/* Unidentifiable button - mobile uses same toggle pattern as delete */
+.unidentifiable-btn {
+    background: #e67e22;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    display: none;
+}
+
+.notification-item.show-delete .unidentifiable-btn {
+    display: block;
+}
+
+/* Photo Lightbox */
+.lightbox-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.lightbox-overlay.active {
+    display: flex;
+}
+
+.lightbox-overlay.closing {
+    animation: lightboxFadeOut 0.2s ease-out forwards;
+}
+
+.lightbox-overlay.closing .lightbox-content {
+    animation: lightboxSlideDown 0.2s ease-out forwards;
+}
+
+@keyframes lightboxFadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+@keyframes lightboxSlideDown {
+    from { transform: translateY(0); opacity: 1; }
+    to { transform: translateY(20px); opacity: 0; }
+}
+
+.lightbox-content {
+    position: relative;
+    max-width: 90vw;
+    max-height: 90vh;
+    animation: lightboxSlideUp 0.2s ease-out;
+}
+
+@keyframes lightboxSlideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.lightbox-img {
+    max-width: 90vw;
+    max-height: 85vh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox-close {
+    position: absolute;
+    top: -40px;
+    right: 0;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.lightbox-close:hover {
+    background: rgba(255, 255, 255, 0.4);
+}

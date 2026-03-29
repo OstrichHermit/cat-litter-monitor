@@ -224,7 +224,7 @@ class WebApp:
 
         @self.app.get('/api/records/unidentified')
         async def records_unidentified():
-            """获取未识别的照片列表"""
+            """获取未识别的照片列表（包括未识别和无法识别的照片）"""
             try:
                 from src.storage.photo_manager import PhotoManager
                 from src.config import get_config
@@ -234,13 +234,80 @@ class WebApp:
                 photo_base_dir = photo_config.get('photo_base_dir', 'photo')
 
                 photo_manager = PhotoManager(photo_base_dir)
-                photos = photo_manager.get_unidentified_photos()
+                unidentified_photos = photo_manager.get_unidentified_photos()
+                unidentifiable_photos = photo_manager.get_unidentifiable_photos()
+
+                # 合并两个列表
+                photos = unidentified_photos + unidentifiable_photos
 
                 return JSONResponse({
                     'success': True,
                     'photos': photos,
                     'count': len(photos)
                 })
+            except Exception as e:
+                return JSONResponse({
+                    'success': False,
+                    'error': str(e)
+                }, status_code=500)
+
+        @self.app.post('/api/records/mark-unidentifiable')
+        async def mark_unidentifiable(request: Request):
+            """将照片标记为无法识别，移动到 Unidentifiable 文件夹"""
+            try:
+                from src.storage.photo_manager import PhotoManager
+                from src.config import get_config
+                import os
+
+                data = await request.json()
+                photo_path = data.get('photo_path')
+
+                if not photo_path:
+                    return JSONResponse({
+                        'success': False,
+                        'error': '缺少照片路径'
+                    }, status_code=400)
+
+                # photo_path 是相对路径，格式: YYYY-MM-DD/Unidentified/filename.jpg
+                # 需要加上 photo/ 前缀
+                if not photo_path.startswith('photo/'):
+                    photo_path = f'photo/{photo_path}'
+
+                # 转换为绝对路径
+                config = get_config()
+                abs_photo_path = config.get_absolute_path(photo_path)
+
+                # 从路径中提取日期部分
+                parts = photo_path.split('/')
+                date_str = parts[1] if len(parts) > 1 else None
+
+                if not date_str:
+                    return JSONResponse({
+                        'success': False,
+                        'error': '无法从路径中提取日期'
+                    }, status_code=400)
+
+                # 使用 PhotoManager 移动照片
+                photo_config = config.get_photo_config()
+                photo_base_dir = photo_config.get('photo_base_dir', 'photo')
+                photo_manager = PhotoManager(photo_base_dir)
+
+                new_path = photo_manager.move_to_unidentifiable(abs_photo_path, date_str)
+
+                if new_path:
+                    # 通知前端记录已更新
+                    self.notify_records_update()
+
+                    return JSONResponse({
+                        'success': True,
+                        'message': '已标记为无法识别',
+                        'new_path': new_path
+                    })
+                else:
+                    return JSONResponse({
+                        'success': False,
+                        'error': '移动照片失败'
+                    }, status_code=500)
             except Exception as e:
                 return JSONResponse({
                     'success': False,

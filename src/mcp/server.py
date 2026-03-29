@@ -341,6 +341,50 @@ class LitterMonitorMCPServer:
                 'error': str(e)
             }
 
+    def mark_unidentifiable(self, photo_path: str) -> dict:
+        """
+        将无法识别的照片标记为无法识别，移动到 Unidentifiable 文件夹
+
+        Args:
+            photo_path: 照片路径
+
+        Returns:
+            操作结果字典
+        """
+        try:
+            import re
+
+            # 从路径中提取日期 (YYYY-MM-DD)
+            match = re.search(r'(\d{4}-\d{2}-\d{2})', photo_path)
+            if not match:
+                return {
+                    'success': False,
+                    'error': f'无法从路径中提取日期: {photo_path}'
+                }
+
+            date_str = match.group(1)
+
+            new_path = self.photo_manager.move_to_unidentifiable(photo_path, date_str)
+
+            if new_path:
+                return {
+                    'success': True,
+                    'new_path': new_path,
+                    'message': '已标记为无法识别'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': '移动照片失败'
+                }
+
+        except Exception as e:
+            logger.error(f"标记照片为无法识别失败: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
 
 # 全局服务器实例
 _server_instance = None
@@ -452,6 +496,20 @@ def main():
                         "type": "object",
                         "properties": {}
                     }
+                ),
+                Tool(
+                    name="mark_unidentifiable",
+                    description="将无法识别的照片标记为无法识别，移动到 Unidentifiable 文件夹",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "photo_path": {
+                                "type": "string",
+                                "description": "照片路径"
+                            }
+                        },
+                        "required": ["photo_path"]
+                    }
                 )
             ]
 
@@ -473,6 +531,8 @@ def main():
                 )
             elif name == "get_unidentified_photos":
                 result = server.get_unidentified_photos()
+            elif name == "mark_unidentifiable":
+                result = server.mark_unidentifiable(arguments.get("photo_path"))
             else:
                 result = {"success": False, "error": f"未知工具: {name}"}
 
