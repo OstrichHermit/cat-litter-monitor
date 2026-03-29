@@ -227,7 +227,7 @@ function createRecordItem(record, section) {
 
 function viewImage(url, event) {
     if (event) event.stopPropagation();
-    window.open(url, '_blank');
+    openLightbox(url);
 }
 
 // ==================== Record Actions ====================
@@ -493,7 +493,7 @@ function renderNotifications(photos) {
         content.innerHTML = `
             <div class="notification-empty">
                 <div class="notification-empty-icon">🎉</div>
-                <p>所有照片都已识别完毕</p>
+                <p>所有照片都已处理完毕</p>
             </div>
         `;
         return;
@@ -518,12 +518,13 @@ function renderNotifications(photos) {
                 const photoUrl = `/static/photo/${relativePath}`;
                 const timeMatch = photo.filename.match(/_(\d{2})(\d{2})/);
                 const timeStr = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : '';
+                const displayName = photo.type === 'unidentifiable' ? '无法识别' : '未识别';
 
                 return `
                     <div class="notification-item" data-photo-path="${relativePath}">
                         <div class="notification-info">
                             <span class="notification-time">${timeStr}</span>
-                            <span class="notification-name">未识别</span>
+                            <span class="notification-name ${photo.type === 'unidentifiable' ? 'unidentifiable' : ''}">${displayName}</span>
                         </div>
                         <img src="${photoUrl}" class="notification-img" alt="照片" onclick="viewImage('${photoUrl}', event)">
 
@@ -541,6 +542,7 @@ function renderNotifications(photos) {
 
                         <!-- Delete Button -->
                         <button class="delete-btn" onclick="deleteUnidentifiedPhoto('${relativePath}', event)">✕</button>
+
                     </div>
                 `;
             }).join('')}
@@ -586,3 +588,40 @@ loadNotifications();
 fetch('/api/status')
     .then(r => r.json())
     .then(data => updateStatus(data.running));
+
+// ==================== Photo Lightbox ====================
+function openLightbox(url) {
+    const lightbox = document.getElementById('photoLightbox');
+    const img = document.getElementById('lightboxImg');
+    img.src = url;
+    lightbox.classList.add('active');
+}
+
+function closeLightbox() {
+    const lightbox = document.getElementById('photoLightbox');
+    lightbox.classList.add('closing');
+    setTimeout(() => {
+        lightbox.classList.remove('active', 'closing');
+    }, 200);
+}
+
+async function markUnidentifiable(photoRelPath, event) {
+    if (event) event.stopPropagation();
+    if (!confirm('确定要将此照片标记为无法识别吗？')) return;
+
+    try {
+        const response = await fetch('/api/records/mark-unidentifiable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ photo_path: photoRelPath })
+        });
+        const data = await response.json();
+        if (data.success) {
+            loadNotifications();
+        } else {
+            alert('标记失败：' + data.error);
+        }
+    } catch (err) {
+        alert('请求失败：' + err);
+    }
+}

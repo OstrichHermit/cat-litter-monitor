@@ -221,7 +221,7 @@ function updateRecords(containerId, statsPrefix, records) {
                 <span class="record-time">${r.record_time}</span>
                 <span class="record-cat">${r.cat_name}</span>
                 <img src="${photoUrl}" class="record-img"
-                     onclick="window.open('${photoUrl}', '_blank')"
+                     onclick="openLightbox('${photoUrl}')"
                      onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTIiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiPjwvdGV4dD48L3N2Zz4='"
                      alt="照片">
                 <div class="identify-controls ${editClass}">
@@ -393,6 +393,7 @@ document.getElementById('notificationModal').addEventListener('click', function(
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeNotifications();
+        closeLightbox();
     }
 });
 
@@ -430,7 +431,7 @@ function renderNotifications(photos) {
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                 </svg>
-                <p>🎉 所有照片都已识别完毕</p>
+                <p>🎉 所有照片都已处理完毕</p>
             </div>
         `;
         return;
@@ -464,12 +465,13 @@ function renderNotifications(photos) {
 
                 const deleteClass = deleteMode.notification ? '' : 'hidden';
                 const editClass = editMode.notification ? 'visible' : '';
+                const displayName = photo.type === 'unidentifiable' ? '无法识别' : '未识别';
                 return `
                     <div class="notification-item">
                         <span class="notification-item-time">${photo.date} ${timeStr}</span>
-                        <span class="notification-item-name">未识别</span>
+                        <span class="notification-item-name ${photo.type === 'unidentifiable' ? 'unidentifiable' : ''}">${displayName}</span>
                         <img src="${photoUrl}" class="notification-item-img"
-                             onclick="window.open('${photoUrl}', '_blank')"
+                             onclick="openLightbox('${photoUrl}')"
                              onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iMzYiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjM2IiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTIiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiPjwvdGV4dD48L3N2Zz4='"
                              alt="照片">
                         <div class="identify-controls ${editClass}">
@@ -546,4 +548,43 @@ async function manualIdentify(photoPath, filename) {
     } catch (err) {
         alert('入库失败: ' + err);
     }
+}
+
+async function markUnidentifiable(photoPath) {
+    if (!confirm('确定要将此照片标记为无法识别吗？')) return;
+
+    try {
+        const response = await fetch('/api/records/mark-unidentifiable', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ photo_path: photoPath })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            loadNotifications();
+        } else {
+            alert('标记失败: ' + (data.error || '未知错误'));
+        }
+    } catch (err) {
+        alert('标记失败: ' + err);
+    }
+}
+
+// ==================== Photo Lightbox ====================
+function openLightbox(url) {
+    const lightbox = document.getElementById('photoLightbox');
+    const img = document.getElementById('lightboxImg');
+    img.src = url;
+    lightbox.classList.add('active');
+}
+
+function closeLightbox() {
+    const lightbox = document.getElementById('photoLightbox');
+    lightbox.classList.add('closing');
+    setTimeout(() => {
+        lightbox.classList.remove('active', 'closing');
+    }, 200);
 }

@@ -70,13 +70,94 @@ class PhotoManager:
                 unidentified_photos.append({
                     'date': date_dir.name,
                     'path': str(photo_file),
-                    'filename': photo_file.name
+                    'filename': photo_file.name,
+                    'type': 'unidentified'
                 })
 
         # 按日期排序
         unidentified_photos.sort(key=lambda x: x['date'], reverse=True)
 
         return unidentified_photos
+
+    def get_unidentifiable_photos(self) -> List[Dict[str, str]]:
+        """
+        获取所有无法识别的照片
+
+        扫描所有日期目录下的 Unidentifiable 子目录，返回照片列表。
+
+        Returns:
+            无法识别照片列表，每项包含日期、路径、文件名和类型
+        """
+        unidentifiable_photos = []
+
+        # 遍历所有日期目录
+        for date_dir in self.photo_base_dir.iterdir():
+            if not date_dir.is_dir():
+                continue
+
+            # 检查是否有 Unidentifiable 目录
+            unidentifiable_dir = date_dir / "Unidentifiable"
+            if not unidentifiable_dir.exists():
+                continue
+
+            # 获取该目录下的所有照片
+            for photo_file in unidentifiable_dir.glob("*.jpg"):
+                unidentifiable_photos.append({
+                    'date': date_dir.name,
+                    'path': str(photo_file),
+                    'filename': photo_file.name,
+                    'type': 'unidentifiable'
+                })
+
+        # 按日期排序
+        unidentifiable_photos.sort(key=lambda x: x['date'], reverse=True)
+
+        return unidentifiable_photos
+
+    def move_to_unidentifiable(
+        self,
+        photo_path: str,
+        date_str: str
+    ) -> Optional[str]:
+        """
+        移动照片从 Unidentified 到 Unidentifiable
+
+        用于标记AI无法识别的照片，防止心跳重复处理。
+
+        Args:
+            photo_path: 原照片路径（可以是相对路径或绝对路径）
+            date_str: 日期字符串 (YYYY-MM-DD)
+
+        Returns:
+            新照片相对路径，如果失败返回None
+        """
+        try:
+            # 源文件
+            source_path = Path(photo_path)
+            if not source_path.exists():
+                self.logger.warning(f"照片文件不存在: {photo_path}")
+                return None
+
+            # 目标目录：photo/YYYY-MM-DD/Unidentifiable/
+            target_dir = self.photo_base_dir / date_str / "Unidentifiable"
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            # 目标文件路径
+            target_path = target_dir / source_path.name
+
+            # 移动文件
+            shutil.move(str(source_path), str(target_path))
+
+            self.logger.info(f"照片移动到无法识别目录: {source_path} -> {target_path}")
+
+            # 返回相对路径，使用正斜杠（Unix风格）
+            # Web界面期望的格式：photo/YYYY-MM-DD/Unidentifiable/文件名.jpg
+            relative_path = target_path.relative_to(self.photo_base_dir.parent)
+            return relative_path.as_posix()
+
+        except Exception as e:
+            self.logger.error(f"移动照片到无法识别目录失败: {e}")
+            return None
 
     def move_photo(
         self,
