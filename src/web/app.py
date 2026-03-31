@@ -8,6 +8,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from datetime import datetime, date
 import json
 from typing import Optional, Dict, List
@@ -15,6 +16,8 @@ import cv2
 import numpy as np
 from pathlib import Path
 import asyncio
+import subprocess
+import time
 
 
 class ConnectionManager:
@@ -68,6 +71,106 @@ class ConnectionManager:
                 pass
         except Exception:
             pass
+
+
+# ============================================================================
+# 服务监控辅助函数
+# ============================================================================
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+LOG_FILES = {
+    "main": PROJECT_ROOT / "logs" / "main.log",
+    "manager": PROJECT_ROOT / "logs" / "manager.log",
+    "go2rtc": PROJECT_ROOT / "logs" / "go2rtc.log",
+}
+
+# 进程缓存
+_process_cache = {"data": [], "cache_time": 0}
+
+
+def _refresh_process_cache():
+    """刷新进程缓存（1秒有效期）"""
+    now = time.time()
+    if _process_cache["cache_time"] and now - _process_cache["cache_time"] < 1:
+        return
+    try:
+        result = subprocess.run(
+            ['wmic', 'process', 'get', 'ProcessId,CommandLine', '/format:csv'],
+            capture_output=True, text=True, encoding='utf-8',
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        _process_cache["data"] = result.stdout.strip().split('\n')
+        _process_cache["cache_time"] = now
+    except Exception:
+        pass
+
+
+def find_process_by_commandline(pattern: str) -> Optional[int]:
+    """通过命令行参数查找进程 PID"""
+    _refresh_process_cache()
+    try:
+        for line in _process_cache["data"]:
+            if pattern.lower() in line.lower():
+                parts = line.split(',')
+                if len(parts) >= 3:
+                    pid_str = parts[-1].strip().strip('"')
+                    if pid_str.isdigit():
+                        return int(pid_str)
+    except Exception:
+        pass
+    return None
+
+
+def get_service_status(service: str) -> Dict:
+    """获取单个服务状态"""
+    patterns = {
+        "main": "src\\main.py",
+        "manager": "src\\manager.py",
+        "go2rtc": "go2rtc.exe",
+    }
+
+    if service == "go2rtc":
+        # go2rtc 用 tasklist 检查
+        try:
+            result = subprocess.run(
+                ['tasklist', '/FI', 'IMAGENAME eq go2rtc.exe', '/NH'],
+                capture_output=True, text=True, encoding='utf-8',
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            running = 'go2rtc.exe' in result.stdout
+            pid = None
+            if running:
+                parts = result.stdout.strip().split()
+                for i, p in enumerate(parts):
+                    if p == 'go2rtc.exe' and i + 1 < len(parts):
+                        pid_str = parts[i + 1]
+                        if pid_str.isdigit():
+                            pid = int(pid_str)
+                            break
+            return {"running": running, "pid": pid}
+        except Exception:
+            return {"running": False, "pid": None}
+
+    pattern = patterns.get(service)
+    if not pattern:
+        return {"running": False, "pid": None}
+
+    pid = find_process_by_commandline(pattern)
+    return {"running": pid is not None, "pid": pid}
+
+
+def read_last_lines(log_file: Path, lines: int = 100) -> List[str]:
+    """读取日志文件最后 N 行"""
+    if not log_file.exists():
+        return ["等待服务启动..."]
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            all_lines = f.readlines()
+            result = [line.strip() for line in all_lines[-lines:] if line.strip()]
+            return result if result else ["等待日志输出..."]
+    except Exception as e:
+        return [f"读取日志失败: {e}"]
 
 
 class WebApp:
@@ -127,6 +230,17 @@ class WebApp:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
+        # 禁用静态文件缓存
+        class NoCacheMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                response = await call_next(request)
+                if request.url.path.startswith("/static/"):
+                    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                    response.headers["Pragma"] = "no-cache"
+                    response.headers["Expires"] = "0"
+                return response
+        self.app.add_middleware(NoCacheMiddleware)
 
         # 创建WebSocket连接管理器
         self.manager = ConnectionManager()
@@ -726,6 +840,103 @@ class WebApp:
                 return FileResponse(str(full_path_resolved))
             except Exception as e:
                 return JSONResponse({'error': str(e)}, status_code=404)
+
+        # ---- 服务监控 API ----
+
+        @self.app.get("/api/services/status")
+        async def get_services_status():
+            """获取所有服务的运行状态"""
+            services = ["main", "manager", "go2rtc"]
+            status = {}
+            for service in services:
+                status[service] = get_service_status(service)
+            return {"status": status, "timestamp": datetime.now().isoformat()}
+
+        @self.app.get("/api/logs/{service}")
+        async def get_service_logs(service: str, lines: int = 100):
+            """获取服务日志"""
+            if service not in LOG_FILES:
+                return JSONResponse({"error": "Service not found"}, status_code=404)
+
+            log_file = LOG_FILES[service]
+            log_lines = read_last_lines(log_file, lines)
+            return {
+                "service": service,
+                "lines": log_lines,
+                "count": len(log_lines),
+                "timestamp": datetime.now().isoformat()
+            }
+
+        @self.app.websocket("/ws/logs/{service}")
+        async def websocket_service_log(websocket: WebSocket, service: str):
+            """WebSocket 实时日志流"""
+            if service not in LOG_FILES:
+                await websocket.close(code=4004)
+                return
+
+            await websocket.accept()
+            log_file = LOG_FILES[service]
+
+            try:
+                await websocket.send_json({"type": "connected", "service": service})
+
+                # 发送最后 50 行作为初始内容
+                if log_file.exists():
+                    last_lines = read_last_lines(log_file, 50)
+                    for line in last_lines:
+                        await websocket.send_json({"type": "log", "data": line})
+
+                # 持续监控新内容
+                if log_file.exists():
+                    with open(log_file, "r", encoding="utf-8") as f:
+                        f.seek(0, 2)  # 跳到文件末尾
+                        while True:
+                            line = f.readline()
+                            if line:
+                                await websocket.send_json({"type": "log", "data": line.strip()})
+                            else:
+                                await asyncio.sleep(0.1)
+                else:
+                    # 文件不存在，等待创建
+                    while True:
+                        await asyncio.sleep(1)
+                        if log_file.exists():
+                            # 文件创建了，重新打开并开始 tail
+                            with open(log_file, "r", encoding="utf-8") as f:
+                                f.seek(0, 2)
+                                while True:
+                                    line = f.readline()
+                                    if line:
+                                        await websocket.send_json({"type": "log", "data": line.strip()})
+                                    else:
+                                        await asyncio.sleep(0.1)
+
+            except WebSocketDisconnect:
+                pass
+            except Exception:
+                pass
+
+        @self.app.websocket("/ws/services/status")
+        async def websocket_services_status(websocket: WebSocket):
+            """WebSocket 实时服务状态推送"""
+            await websocket.accept()
+            try:
+                await websocket.send_json({"type": "connected"})
+                while True:
+                    services = ["main", "manager", "go2rtc"]
+                    status = {}
+                    for service in services:
+                        status[service] = get_service_status(service)
+                    await websocket.send_json({
+                        "type": "status_update",
+                        "data": status,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    await asyncio.sleep(2)
+            except WebSocketDisconnect:
+                pass
+            except Exception:
+                pass
 
         @self.app.websocket('/ws')
         async def websocket_endpoint(websocket: WebSocket):

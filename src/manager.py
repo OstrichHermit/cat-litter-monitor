@@ -18,6 +18,10 @@ from typing import Optional, Dict, Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# 设置日志重定向（必须在所有其他 import 之前）
+from src.utils.log_writer import setup_logging
+setup_logging('manager')
+
 from src.config import get_config
 from src.utils.logger import get_logger, setup_logger_from_config
 

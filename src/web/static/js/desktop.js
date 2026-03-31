@@ -524,8 +524,6 @@ async function manualIdentify(photoPath, filename) {
         return;
     }
 
-    if (!confirm(`确定要将此照片识别为 ${catName} 吗？`)) return;
-
     try {
         const response = await fetch('/api/records/manual-add', {
             method: 'POST',
@@ -588,3 +586,196 @@ function closeLightbox() {
         lightbox.classList.remove('active', 'closing');
     }, 200);
 }
+
+// ============================================
+// 服务监控面板
+// ============================================
+
+const monitorServices = ['main', 'manager', 'go2rtc'];
+let monitorStatusWS = null;
+let monitorLogWS = {};
+let monitorAutoScroll = {};
+
+// 初始化自动滚动状态
+monitorServices.forEach(s => monitorAutoScroll[s] = true);
+
+function toggleMonitorPanel() {
+    const panel = document.getElementById('monitorPanel');
+    const btn = document.getElementById('monitorToggle');
+    const isOpen = panel.classList.contains('open');
+
+    if (isOpen) {
+        panel.classList.remove('open');
+        btn.classList.remove('active');
+        // 关闭 WebSocket 连接
+        disconnectMonitorWS();
+    } else {
+        panel.classList.add('open');
+        btn.classList.add('active');
+        // 连接 WebSocket
+        connectMonitorStatusWS();
+        monitorServices.forEach(s => connectMonitorLogWS(s));
+    }
+}
+
+function disconnectMonitorWS() {
+    if (monitorStatusWS) {
+        monitorStatusWS.close();
+        monitorStatusWS = null;
+    }
+    Object.keys(monitorLogWS).forEach(key => {
+        if (monitorLogWS[key]) {
+            monitorLogWS[key].close();
+            monitorLogWS[key] = null;
+        }
+    });
+}
+
+function connectMonitorStatusWS() {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${location.host}/ws/services/status`;
+
+    try {
+        monitorStatusWS = new WebSocket(wsUrl);
+
+        monitorStatusWS.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'status_update') {
+                updateMonitorStatus(data.data);
+            }
+        };
+
+        monitorStatusWS.onclose = () => {
+            // 3秒后重连（如果面板还开着）
+            setTimeout(() => {
+                if (document.getElementById('monitorPanel').classList.contains('open')) {
+                    connectMonitorStatusWS();
+                }
+            }, 3000);
+        };
+
+        monitorStatusWS.onerror = () => {};
+    } catch (e) {
+        console.error('Monitor status WS error:', e);
+    }
+}
+
+function connectMonitorLogWS(service) {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${location.host}/ws/logs/${service}`;
+
+    try {
+        monitorLogWS[service] = new WebSocket(wsUrl);
+
+        monitorLogWS[service].onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'log') {
+                appendMonitorLog(service, data.data);
+            }
+        };
+
+        monitorLogWS[service].onclose = () => {
+            setTimeout(() => {
+                if (document.getElementById('monitorPanel').classList.contains('open')) {
+                    connectMonitorLogWS(service);
+                }
+            }, 3000);
+        };
+
+        monitorLogWS[service].onerror = () => {};
+    } catch (e) {
+        console.error(`Monitor log WS error (${service}):`, e);
+    }
+}
+
+function updateMonitorStatus(status) {
+    Object.keys(status).forEach(service => {
+        const info = status[service];
+
+        // 更新侧边栏状态
+        const dot = document.getElementById(`monitor-dot-${service}`);
+        const logDot = document.getElementById(`monitor-log-dot-${service}`);
+        const statusText = document.getElementById(`monitor-status-${service}`);
+        const pidText = document.getElementById(`monitor-pid-${service}`);
+
+        if (dot) {
+            dot.className = `monitor-status-dot ${info.running ? 'running' : 'stopped'}`;
+        }
+        if (logDot) {
+            logDot.className = `monitor-status-dot ${info.running ? 'running' : 'stopped'}`;
+        }
+        if (statusText) {
+            statusText.textContent = info.running ? '运行中' : '已停止';
+        }
+        if (pidText) {
+            pidText.textContent = info.pid ? `PID: ${info.pid}` : '--';
+        }
+    });
+}
+
+function appendMonitorLog(service, line) {
+    if (!line) return;
+
+    const container = document.getElementById(`monitor-log-${service}`);
+    if (!container) return;
+
+    const div = document.createElement('div');
+    div.className = 'monitor-log-line';
+
+    // 格式化时间戳（用 span 标记）
+    const formatted = line.replace(
+        /\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\]/g,
+        '<span class="monitor-log-timestamp">[$1]</span>'
+    );
+    // 也匹配 Logger 格式：2026-03-29 18:14:05
+    const formatted2 = formatted.replace(
+        /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/g,
+        '<span class="monitor-log-timestamp">$1</span>'
+    );
+
+    // 标记错误行
+    if (line.toLowerCase().includes('error') || line.toLowerCase().includes('exception') || line.toLowerCase().includes('traceback')) {
+        div.className += ' monitor-log-error';
+    }
+
+    div.innerHTML = formatted2;
+    container.appendChild(div);
+
+    // 限制最大行数
+    while (container.children.length > 200) {
+        container.removeChild(container.firstChild);
+    }
+
+    // 自动滚动
+    if (monitorAutoScroll[service]) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function clearMonitorLog(service) {
+    const container = document.getElementById(`monitor-log-${service}`);
+    if (container) {
+        container.innerHTML = '';
+    }
+}
+
+function scrollMonitorToBottom(service) {
+    const container = document.getElementById(`monitor-log-${service}`);
+    if (container) {
+        container.scrollTop = container.scrollHeight;
+        monitorAutoScroll[service] = true;
+    }
+}
+
+// 监听日志容器的滚动事件，判断是否自动滚动
+document.addEventListener('DOMContentLoaded', () => {
+    monitorServices.forEach(service => {
+        const container = document.getElementById(`monitor-log-${service}`);
+        if (container) {
+            container.addEventListener('scroll', () => {
+                const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 30;
+                monitorAutoScroll[service] = atBottom;
+            });
+        }
+    });
+});

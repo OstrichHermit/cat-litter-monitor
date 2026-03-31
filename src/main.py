@@ -16,6 +16,10 @@ from typing import Optional
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# 设置日志重定向（必须在所有其他 import 之前）
+from src.utils.log_writer import setup_logging
+setup_logging('main')
+
 from src.config import get_config
 from src.utils.logger import get_logger, setup_logger_from_config
 from src.core.camera import Camera, create_camera_from_config
@@ -238,13 +242,6 @@ class LitterMonitorSystem:
         self.logger.info("系统启动，更新统计数据...")
         self._update_statistics()
 
-        # 启动摄像头
-        if not self.camera.start():
-            self.logger.error("摄像头启动失败")
-            return
-
-        self.logger.info("摄像头已启动")
-
         # 启动Web服务器（在单独线程中）
         web_thread = threading.Thread(target=self.web_app.run, daemon=True)
         web_thread.start()
@@ -252,6 +249,13 @@ class LitterMonitorSystem:
 
         # 更新Web状态
         self.web_app.set_running(True)
+
+        # 启动摄像头
+        if not self.camera.start():
+            self.logger.error("摄像头启动失败，Web界面仍可访问")
+            # 摄像头失败不退出，Web界面照常运行
+        else:
+            self.logger.info("摄像头已启动")
 
         # 主循环
         system_config = self.config.get_system_config()
