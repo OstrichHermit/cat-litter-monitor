@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>猫厕所监控系统</title>
-    <link rel="stylesheet" href="/static/css/desktop.css?v=4">
+    <link rel="stylesheet" href="/static/css/desktop.css?v=12">
 </head>
 <body>
     <div class="app">
@@ -14,6 +14,7 @@
                 <p>实时监控与智能统计</p>
             </div>
             <div style="display: flex; align-items: center; gap: 20px;">
+                <button id="monitorToggle" class="btn-monitor" onclick="toggleMonitorPanel()" title="服务监控">🖥️ 监控</button>
                 <button id="themeToggle" class="theme-toggle" title="切换深色模式">🌙</button>
                 <div id="notificationIcon" class="notification-icon" onclick="openNotifications()">
                     🔔 新纪录
@@ -23,6 +24,86 @@
                 <button id="stopBtn" class="btn-stop">🛑 停止服务</button>
             </div>
         </header>
+
+        <!-- Service Monitor Panel -->
+        <div id="monitorPanel" class="monitor-panel">
+            <div class="monitor-content">
+                <!-- Left: Component Status Sidebar -->
+                <div class="monitor-sidebar">
+                    <div class="monitor-sidebar-title">服务状态</div>
+                    <div class="monitor-component-list">
+                        <div class="monitor-component-item" data-service="main">
+                            <div class="monitor-component-info">
+                                <span class="monitor-component-name">Main</span>
+                                <span class="monitor-component-pid" id="monitor-pid-main">--</span>
+                            </div>
+                            <div class="monitor-component-status">
+                                <span class="monitor-status-dot" id="monitor-dot-main"></span>
+                                <span class="monitor-status-text" id="monitor-status-main">检查中</span>
+                            </div>
+                        </div>
+                        <div class="monitor-component-item" data-service="manager">
+                            <div class="monitor-component-info">
+                                <span class="monitor-component-name">Manager</span>
+                                <span class="monitor-component-pid" id="monitor-pid-manager">--</span>
+                            </div>
+                            <div class="monitor-component-status">
+                                <span class="monitor-status-dot" id="monitor-dot-manager"></span>
+                                <span class="monitor-status-text" id="monitor-status-manager">检查中</span>
+                            </div>
+                        </div>
+                        <div class="monitor-component-item" data-service="go2rtc">
+                            <div class="monitor-component-info">
+                                <span class="monitor-component-name">Go2rtc</span>
+                                <span class="monitor-component-pid" id="monitor-pid-go2rtc">--</span>
+                            </div>
+                            <div class="monitor-component-status">
+                                <span class="monitor-status-dot" id="monitor-dot-go2rtc"></span>
+                                <span class="monitor-status-text" id="monitor-status-go2rtc">检查中</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Right: Log Panels -->
+                <div class="monitor-log-area">
+                    <div class="monitor-log-grid">
+                        <div class="monitor-log-panel" data-service="main">
+                            <div class="monitor-log-header">
+                                <span class="monitor-status-dot" id="monitor-log-dot-main"></span>
+                                <span class="monitor-log-title">Main</span>
+                                <div class="monitor-log-actions">
+                                    <button class="monitor-log-btn" onclick="clearMonitorLog('main')">Clear</button>
+                                    <button class="monitor-log-btn" onclick="scrollMonitorToBottom('main')">Bottom</button>
+                                </div>
+                            </div>
+                            <div class="monitor-log-content" id="monitor-log-main"></div>
+                        </div>
+                        <div class="monitor-log-panel" data-service="manager">
+                            <div class="monitor-log-header">
+                                <span class="monitor-status-dot" id="monitor-log-dot-manager"></span>
+                                <span class="monitor-log-title">Manager</span>
+                                <div class="monitor-log-actions">
+                                    <button class="monitor-log-btn" onclick="clearMonitorLog('manager')">Clear</button>
+                                    <button class="monitor-log-btn" onclick="scrollMonitorToBottom('manager')">Bottom</button>
+                                </div>
+                            </div>
+                            <div class="monitor-log-content" id="monitor-log-manager"></div>
+                        </div>
+                        <div class="monitor-log-panel" data-service="go2rtc">
+                            <div class="monitor-log-header">
+                                <span class="monitor-status-dot" id="monitor-log-dot-go2rtc"></span>
+                                <span class="monitor-log-title">Go2rtc</span>
+                                <div class="monitor-log-actions">
+                                    <button class="monitor-log-btn" onclick="clearMonitorLog('go2rtc')">Clear</button>
+                                    <button class="monitor-log-btn" onclick="scrollMonitorToBottom('go2rtc')">Bottom</button>
+                                </div>
+                            </div>
+                            <div class="monitor-log-content" id="monitor-log-go2rtc"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Notification Modal -->
         <div id="notificationModal" class="notification-modal">
@@ -154,6 +235,6 @@
         </div>
     </div>
 
-    <script src="/static/js/desktop.js?v=4"></script>
+    <script src="/static/js/desktop.js?v=6"></script>
 </body>
 </html>

@@ -434,8 +434,8 @@ body {
     border-radius: var(--radius);
     box-shadow: var(--shadow-lg);
     width: 90%;
-    max-width: 500px;
-    max-height: 80vh;
+    max-width: 550px;
+    max-height: 50vh;
     overflow: hidden;
     animation: slideUp 0.3s ease-out;
 }
@@ -484,7 +484,7 @@ body {
 }
 
 .notification-content {
-    max-height: calc(80vh - 60px);
+    max-height: none;
     overflow-y: auto;
 }
 
@@ -502,7 +502,7 @@ body {
 }
 
 .notification-list {
-    max-height: 280px;
+    max-height: none;
     overflow-y: auto;
 }
 
@@ -1135,4 +1135,374 @@ body {
 
 .lightbox-close:hover {
     background: rgba(255, 255, 255, 0.4);
+}
+
+/* ============================================
+   服务监控面板样式
+   ============================================ */
+
+.btn-monitor {
+    height: 56px;
+    padding: 0 20px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, var(--primary), var(--primary-light));
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.btn-monitor:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow);
+}
+
+.btn-monitor.active {
+    background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+    box-shadow: 0 2px 12px rgba(108, 92, 231, 0.3);
+}
+
+/* 面板容器 - 从顶部滑下 */
+.monitor-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--gray-100);
+    z-index: 500;
+    transform: translateY(-100%);
+    transition: transform 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.monitor-panel.open {
+    transform: translateY(0);
+}
+
+/* 面板内容区 */
+.monitor-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    padding-top: 80px; /* 给 header 留空间 */
+}
+
+/* 左侧状态栏 */
+.monitor-sidebar {
+    width: 200px;
+    padding: 16px;
+    border-right: 1px solid var(--gray-300);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: var(--gray-100);
+    flex-shrink: 0;
+}
+
+.monitor-sidebar-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--gray-600);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--primary);
+}
+
+.monitor-component-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.monitor-component-item {
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: white;
+    border: 1px solid var(--gray-300);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.monitor-component-item:hover {
+    border-color: var(--primary);
+    box-shadow: var(--shadow);
+}
+
+.monitor-component-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.monitor-component-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--primary);
+}
+
+.monitor-component-pid {
+    font-size: 11px;
+    color: var(--gray-600);
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.monitor-component-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* 状态点 */
+.monitor-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--gray-300);
+    flex-shrink: 0;
+    transition: all 0.3s;
+}
+
+.monitor-status-dot.running {
+    background: var(--success);
+    box-shadow: 0 0 6px rgba(39, 174, 96, 0.4);
+}
+
+.monitor-status-dot.stopped {
+    background: var(--danger);
+}
+
+.monitor-status-text {
+    font-size: 12px;
+    color: var(--gray-600);
+}
+
+/* 右侧日志区域 */
+.monitor-log-area {
+    flex: 1;
+    padding: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.monitor-log-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+}
+
+/* 单个日志面板 */
+.monitor-log-panel {
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--gray-300);
+    background: white;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.monitor-log-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--gray-200);
+    border-bottom: 1px solid var(--gray-300);
+    flex-shrink: 0;
+}
+
+.monitor-log-title {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--primary);
+    flex: 1;
+}
+
+.monitor-log-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.monitor-log-btn {
+    padding: 2px 8px;
+    border: 1px solid var(--gray-300);
+    border-radius: 4px;
+    background: white;
+    color: var(--gray-600);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.monitor-log-btn:hover {
+    background: var(--gray-200);
+    border-color: var(--primary);
+}
+
+/* 日志内容区 */
+.monitor-log-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    background: #fafafa;
+    min-height: 0;
+}
+
+.monitor-log-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.monitor-log-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.monitor-log-content::-webkit-scrollbar-thumb {
+    background: var(--gray-300);
+    border-radius: 3px;
+}
+
+.monitor-log-content::-webkit-scrollbar-thumb:hover {
+    background: var(--gray-600);
+}
+
+/* 日志行 */
+.monitor-log-line {
+    white-space: pre-wrap;
+    word-break: break-all;
+    padding: 1px 0;
+    color: var(--gray-800);
+}
+
+.monitor-log-timestamp {
+    color: var(--success);
+    font-size: 0.75rem;
+}
+
+.monitor-log-error {
+    color: var(--danger);
+}
+
+/* ---- 深色模式 ---- */
+
+[data-theme="dark"] .monitor-panel {
+    background: #0f0f1a;
+}
+
+[data-theme="dark"] .monitor-sidebar {
+    background: #0f0f1a;
+    border-right-color: #2a2a4a;
+}
+
+[data-theme="dark"] .monitor-sidebar-title {
+    color: #a0a0b0;
+    border-bottom-color: #4a6785;
+}
+
+[data-theme="dark"] .monitor-component-item {
+    background: #1a1a2e;
+    border-color: #2a2a4a;
+}
+
+[data-theme="dark"] .monitor-component-item:hover {
+    border-color: #4a6785;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .monitor-component-name {
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] .monitor-log-panel {
+    background: #1a1a2e;
+    border-color: #2a2a4a;
+}
+
+[data-theme="dark"] .monitor-log-header {
+    background: #12122a;
+    border-bottom-color: #2a2a4a;
+}
+
+[data-theme="dark"] .monitor-log-title {
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] .monitor-log-btn {
+    background: #2a2a4a;
+    border-color: #3a3a5a;
+    color: #a0a0b0;
+}
+
+[data-theme="dark"] .monitor-log-btn:hover {
+    background: #3a3a5a;
+    border-color: #4a6785;
+}
+
+[data-theme="dark"] .monitor-log-content {
+    background: #0a0a1a;
+}
+
+[data-theme="dark"] .monitor-log-line {
+    color: #c0c0d0;
+}
+
+[data-theme="dark"] .monitor-log-timestamp {
+    color: #3daa6e;
+}
+
+[data-theme="dark"] .monitor-log-error {
+    color: #c4504a;
+}
+
+[data-theme="dark"] .monitor-status-text {
+    color: #a0a0b0;
+}
+
+/* ---- 响应式 ---- */
+
+@media (max-width: 1200px) {
+    .monitor-log-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .monitor-content {
+        flex-direction: column;
+    }
+
+    .monitor-sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--gray-300);
+        padding: 8px 16px;
+    }
+
+    .monitor-component-list {
+        flex-direction: row;
+        gap: 8px;
+    }
+
+    .monitor-component-item {
+        flex: 1;
+    }
+
+    .monitor-log-grid {
+        grid-template-columns: 1fr;
+    }
 }
