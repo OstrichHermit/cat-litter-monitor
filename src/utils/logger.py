@@ -96,13 +96,12 @@ class Logger:
         file_handler.setFormatter(formatter)
         self.logger.addHandler(file_handler)
 
-        # 添加控制台处理器
+        # 添加控制台处理器（只输出消息，时间戳由 TeeWriter 统一添加）
         if console:
             console_handler = colorlog.StreamHandler()
             console_handler.setLevel(logging.INFO)
             console_formatter = colorlog.ColoredFormatter(
-                '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S',
+                '%(log_color)s%(message)s',
                 log_colors={
                     'DEBUG': 'cyan',
                     'INFO': 'green',
