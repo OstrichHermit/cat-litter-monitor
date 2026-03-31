@@ -7,6 +7,7 @@
 import sys
 import os
 from pathlib import Path
+from datetime import datetime
 
 
 class TeeWriter:
@@ -15,22 +16,52 @@ class TeeWriter:
     def __init__(self, terminal, log_file):
         self.terminal = terminal  # 可能是 None（pythonw.exe 模式）
         self.log_file = log_file
+        self.buffer = ""  # 行缓冲，用于累积不完整的写入和拆分的 UTF-8 序列
+
+    def _flush_buffer_to_file(self):
+        """将缓冲区中未完成的行加上时间戳写入文件"""
+        if self.buffer and self.log_file is not None:
+            try:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.log_file.write(f"[{timestamp}] {self.buffer}")
+                self.buffer = ""
+                self.log_file.flush()
+            except Exception:
+                pass
 
     def write(self, message):
-        if message:  # 跳过空写入
-            if self.terminal is not None:
-                try:
-                    self.terminal.write(message)
-                except Exception:
-                    pass
-            if self.log_file is not None:
-                try:
-                    self.log_file.write(message)
-                    self.log_file.flush()
-                except Exception:
-                    pass
+        if not message:  # 跳过空写入
+            return
+
+        # 终端输出保持原始内容，不添加时间戳
+        if self.terminal is not None:
+            try:
+                self.terminal.write(message)
+            except Exception:
+                pass
+
+        if self.log_file is None:
+            return
+
+        # 累积到缓冲区，解决 UTF-8 多字节序列被拆分的问题
+        self.buffer += message
+
+        # 按行处理：遇到换行符时将缓冲区内容按行拆分，逐行加时间戳
+        if "\n" in self.buffer:
+            lines = self.buffer.split("\n")
+            # 最后一个元素是不包含换行符的残余部分，留在缓冲区
+            self.buffer = lines[-1]
+            try:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                for line in lines[:-1]:
+                    self.log_file.write(f"[{timestamp}] {line}\n")
+                self.log_file.flush()
+            except Exception:
+                pass
 
     def flush(self):
+        # 将缓冲区中未完成的行写入文件
+        self._flush_buffer_to_file()
         if self.terminal is not None:
             try:
                 self.terminal.flush()

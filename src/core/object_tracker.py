@@ -318,23 +318,23 @@ class ObjectTracker:
                     if iou > 0.7:  # IOU > 0.7 认为是同一个目标
                         # 删除hits更少的track（保留更稳定的）
                         if other_track.hits < matched_track.hits:
-                            logger.info(f"删除重复track {other_track.track_id} (IOU={iou:.2f}, "
+                            logger.debug(f"删除重复track {other_track.track_id} (IOU={iou:.2f}, "
                                        f"hits={other_track.hits}), 保留track {matched_track.track_id} (hits={matched_track.hits})")
                             other_track.state = TrackState.DELETED
                         elif matched_track.hits < other_track.hits:
-                            logger.info(f"删除重复track {matched_track.track_id} (IOU={iou:.2f}, "
+                            logger.debug(f"删除重复track {matched_track.track_id} (IOU={iou:.2f}, "
                                        f"hits={matched_track.hits}), 保留track {other_track.track_id} (hits={other_track.hits})")
                             matched_track.state = TrackState.DELETED
                             break
                         else:
                             # hits相同，删除time_since_update更大的（更久未更新）
                             if other_track.time_since_update > matched_track.time_since_update:
-                                logger.info(f"删除重复track {other_track.track_id} (IOU={iou:.2f}, "
+                                logger.debug(f"删除重复track {other_track.track_id} (IOU={iou:.2f}, "
                                           f"未更新帧数={other_track.time_since_update}), "
                                           f"保留track {matched_track.track_id} (未更新帧数={matched_track.time_since_update})")
                                 other_track.state = TrackState.DELETED
                             else:
-                                logger.info(f"删除重复track {matched_track.track_id} (IOU={iou:.2f}), "
+                                logger.debug(f"删除重复track {matched_track.track_id} (IOU={iou:.2f}), "
                                           f"保留track {other_track.track_id}")
                                 matched_track.state = TrackState.DELETED
                                 break
@@ -395,7 +395,7 @@ class ObjectTracker:
             # 删除多余的track
             tracks_to_delete = confirmed_tracks[self.max_tracks:]
             for track in tracks_to_delete:
-                logger.info(f"超过最大追踪数({self.max_tracks})，删除track {track.track_id} "
+                logger.debug(f"超过最大追踪数({self.max_tracks})，删除track {track.track_id} "
                            f"(hits={track.hits}, age={track.age})")
                 track.state = TrackState.DELETED
 
