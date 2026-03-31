@@ -392,6 +392,10 @@ document.getElementById('notificationModal').addEventListener('click', function(
 // ESC key to close
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
+        const panel = document.getElementById('monitorPanel');
+        if (panel && panel.classList.contains('open')) {
+            toggleMonitorPanel();
+        }
         closeNotifications();
         closeLightbox();
     }
