@@ -328,16 +328,9 @@ class LitterMonitorSystem:
 
         # 检测猫
         detections = self.detector.detect(frame)
-        if len(detections) > 0:
-            self.logger.debug(f"检测到 {len(detections)} 只猫")
-            for d in detections:
-                self.logger.debug(f"  - 置信度: {d.confidence:.3f}, 位置: {d.bbox}")
 
         # 追踪
         tracks = self.tracker.update(detections)
-        self.logger.debug(f"追踪器输出: {len(tracks)} 个追踪目标")
-        for track in tracks:
-            self.logger.debug(f"  Track ID: {track.track_id}, Bbox: {getattr(track, 'bbox', getattr(track, 'tlwh', 'N/A'))}")
 
         # 行为分析
         fps = self.config.get_camera_config().get('fps', 30)

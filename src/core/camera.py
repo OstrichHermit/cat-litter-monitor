@@ -463,11 +463,9 @@ class Go2RTCCamera:
 
         while self._decoder_attempts < max_attempts:
             current_decoder = self._decoders[self._decoder_attempts]
-            print(f"\n[H265解码] 尝试解码器 {self._decoder_attempts + 1}/{max_attempts}: {current_decoder}")
 
             try:
                 command = self._build_ffmpeg_command(decoder=current_decoder)
-                print(f"FFmpeg命令: {' '.join(command)}")
 
                 # 创建FFmpeg子进程
                 self.ffmpeg_process = subprocess.Popen(
@@ -507,30 +505,19 @@ class Go2RTCCamera:
                     if ('No such device' in stderr_text or 'not found' in stderr_text or
                         'does not support' in stderr_text or 'Hardware device setup failed' in stderr_text or
                         'Error opening output file' in stderr_text):
-                        print(f"⚠ 解码器 '{current_decoder}' 不可用，尝试下一个...")
                         self._stop_ffmpeg_process()
                         self._decoder_attempts += 1
                         continue
                     else:
-                        print(f"❌ FFmpeg进程启动失败!")
-                        print(f"错误输出:\n{stderr_text}")
+                        print(f"FFmpeg启动失败: {stderr_text[:200]}")
                         # 如果是未知错误，也尝试下一个解码器
                         if self._decoder_attempts < max_attempts - 1:
-                            print(f"尝试使用下一个解码器...")
                             self._stop_ffmpeg_process()
                             self._decoder_attempts += 1
                             continue
                         return False
 
-                print(f"✓ FFmpeg转码进程启动成功（使用解码器: {current_decoder}）")
-                print("开始帧大小自动检测...")
-
-                # 打印FFmpeg输出的前几行（用于诊断）
-                time.sleep(1)
-                if hasattr(self, '_stderr_lines') and self._stderr_lines:
-                    print("FFmpeg初始化日志（前10行）:")
-                    for line in self._stderr_lines[:10]:
-                        print(f"  {line}")
+                print(f"FFmpeg启动成功（解码器: {current_decoder}）")
 
                 # 监控初始错误，如果出现大量解码错误，尝试下一个解码器
                 time.sleep(3)
@@ -542,7 +529,7 @@ class Go2RTCCamera:
                                       or 'Skipping invalid' in line)
 
                     if severe_errors > 10 and self._decoder_attempts < max_attempts - 1:
-                        print(f"⚠ 检测到 {severe_errors} 个严重解码错误，尝试下一个解码器...")
+                        print(f"解码器 {current_decoder} 严重错误过多({severe_errors})，切换下一个")
                         self._stop_ffmpeg_process()
                         self._decoder_attempts += 1
                         continue
@@ -550,17 +537,14 @@ class Go2RTCCamera:
                 return True
 
             except FileNotFoundError:
-                print(f"❌ 错误: 找不到FFmpeg可执行文件 '{self.ffmpeg_path}'")
-                print("请确保已安装FFmpeg并添加到系统PATH，或指定正确的ffmpeg_path")
+                print(f"找不到FFmpeg: {self.ffmpeg_path}")
                 return False
             except Exception as e:
-                print(f"❌ 启动FFmpeg进程失败: {e}")
-                import traceback
-                traceback.print_exc()
+                print(f"FFmpeg启动异常: {e}")
                 self._decoder_attempts += 1
                 continue
 
-        print(f"❌ 所有解码器尝试失败（共尝试{max_attempts}种）")
+        print(f"所有解码器均失败（共{max_attempts}种）")
         return False
 
     def _monitor_ffmpeg_stderr(self) -> None:
@@ -576,122 +560,37 @@ class Go2RTCCamera:
                     decoded_line = line.decode('utf-8', errors='ignore').strip()
                     self._stderr_lines.append(decoded_line)
 
-                    # 打印关键信息
-                    if any(keyword in decoded_line.lower() for keyword in
-                           ['error', 'warning', 'input', 'output', 'stream', 'frame']):
+                    # 只打印真正的错误行，过滤掉 warning/input/output/stream/frame 等噪音
+                    lower_line = decoded_line.lower()
+                    if 'error' in lower_line and not any(kw in lower_line for kw in
+                           ['warning', 'input', 'output', 'stream', 'frame', 'info']):
                         print(f"[FFmpeg] {decoded_line}")
-        except Exception as e:
-            print(f"stderr监控线程异常: {e}")
+        except Exception:
+            pass
 
     def _diagnose_ffmpeg_output(self) -> None:
         """
-        诊断FFmpeg输出状态（用于调试）
-
-        修复说明（2026-03-05）：
-            - 移除 Windows 上不兼容的 select.select() 调用
-            - 在 Windows 上直接尝试读取 stdout，避免 OSError: [WinError 10038]
-            - 使用 sys.platform 检测平台，提供更好的跨平台兼容性
+        诊断FFmpeg输出状态（简化版，只输出关键结论）
         """
-        print("\n=== FFmpeg输出诊断 ===")
-
-        # 检查进程状态
         if not self.ffmpeg_process:
-            print("❌ FFmpeg进程对象为None")
+            print("FFmpeg进程未启动")
             return
 
         poll_result = self.ffmpeg_process.poll()
         if poll_result is not None:
-            print(f"❌ FFmpeg进程已退出，返回码: {poll_result}")
-            # 读取剩余的stderr
-            try:
-                remaining_stderr = self.ffmpeg_process.stderr.read()
-                if remaining_stderr:
-                    print(f"剩余stderr输出:\n{remaining_stderr.decode('utf-8', errors='ignore')}")
-            except:
-                pass
+            print(f"FFmpeg进程已退出(返回码:{poll_result})")
             return
         else:
-            print("✓ FFmpeg进程正在运行")
-
-        # 尝试从stdout读取一小块数据
-        try:
-            print("\n尝试从stdout读取数据...")
-
-            # 检测操作系统平台
-            is_windows = sys.platform.startswith('win')
-
-            if is_windows:
-                # Windows平台：使用线程进行超时读取（避免阻塞）
-                import threading
-                import queue
-
-                result_queue = queue.Queue()
-
-                def read_with_timeout():
-                    try:
-                        data = self.ffmpeg_process.stdout.read(100)
-                        result_queue.put(('success', data))
-                    except Exception as e:
-                        result_queue.put(('error', str(e)))
-
-                # 启动读取线程
-                read_thread = threading.Thread(target=read_with_timeout, daemon=True)
-                read_thread.start()
-                read_thread.join(timeout=0.5)  # 最多等待500ms
-
-                if read_thread.is_alive():
-                    print("⚠ 读取超时（500ms），FFmpeg可能还在初始化")
-                    print("   这很正常，系统会等待FFmpeg准备好...")
-                else:
-                    try:
-                        status, data = result_queue.get_nowait()
-                        if status == 'success':
-                            print(f"✓ 成功读取 {len(data)} 字节测试数据")
-                            if len(data) > 0:
-                                print(f"  前10字节: {data[:10].hex()}")
-                            else:
-                                print("⚠ 读取到0字节（FFmpeg还未输出）")
-                        else:
-                            print(f"⚠ 读取错误: {data}")
-                    except queue.Empty:
-                        print("⚠ 无法获取读取结果")
-            else:
-                # Unix/Linux平台：使用 select 进行非阻塞检查
-                import select
-                readable, _, _ = select.select([self.ffmpeg_process.stdout], [], [], 0.1)
-                if readable:
-                    test_data = self.ffmpeg_process.stdout.read(100)
-                    print(f"✓ 成功读取 {len(test_data)} 字节测试数据")
-                    if len(test_data) > 0:
-                        print(f"  前10字节: {test_data[:10].hex()}")
-                else:
-                    print("❌ stdout没有数据可读（超时100ms）")
-
-        except Exception as e:
-            print(f"❌ 读取stdout测试失败: {e}")
-            import traceback
-            traceback.print_exc()
-
-        # 打印stderr的最后几行
-        if hasattr(self, '_stderr_lines') and self._stderr_lines:
-            print(f"\nFFmpeg stderr记录（共{len(self._stderr_lines)}行）:")
-            print("最后5行:")
-            for line in self._stderr_lines[-5:]:
-                print(f"  {line}")
-        else:
-            print("\n⚠ 没有stderr输出记录")
-
-        print("=== 诊断结束 ===\n")
+            print("FFmpeg进程运行中")
 
     def _read_frame_from_ffmpeg(self) -> Optional[np.ndarray]:
         """
-        从FFmpeg进程读取一帧（改进版，支持帧大小自动检测和更健壮的读取逻辑）
+        从FFmpeg进程读取一帧（支持帧大小自动检测）
 
         Returns:
             帧数据（BGR格式的numpy数组），读取失败返回None
         """
         if not self.ffmpeg_process or self.ffmpeg_process.poll() is not None:
-            print("⚠ FFmpeg进程未运行或已退出")
             return None
 
         try:
@@ -709,8 +608,6 @@ class Go2RTCCamera:
             if self._detected_frame_size is None:
                 # 在预热阶段，尝试从缓冲区读取并检测实际帧大小
                 if self._warmup_frames < self._max_warmup_frames:
-                    print(f"\n[预热阶段] 第{self._warmup_frames + 1}/{self._max_warmup_frames}次尝试")
-
                     # 在第一次预热时运行诊断
                     if self._warmup_frames == 0:
                         self._diagnose_ffmpeg_output()
@@ -719,7 +616,6 @@ class Go2RTCCamera:
                     try:
                         # 读取最大可能的帧大小（假设最大4K分辨率）
                         max_buffer_size = 4096 * 2160 * 3
-                        print(f"尝试读取最大缓冲区: {max_buffer_size} 字节...")
 
                         # 使用线程进行超时读取（避免阻塞）
                         import threading
@@ -740,7 +636,6 @@ class Go2RTCCamera:
                         read_thread.join(timeout=2.0)  # 最多等待2秒
 
                         if read_thread.is_alive():
-                            print("⚠ 读取超时（2秒），FFmpeg可能还在解码第一帧")
                             self._warmup_frames += 1
                             time.sleep(0.2)
                             return None
@@ -749,26 +644,225 @@ class Go2RTCCamera:
                         try:
                             status, buffer = result_queue.get_nowait()
                             if status == 'error':
-                                print(f"❌ 读取错误: {buffer}")
                                 self._warmup_frames += 1
                                 time.sleep(0.1)
                                 return None
                         except queue.Empty:
-                            print("❌ 无法获取读取结果")
                             self._warmup_frames += 1
                             time.sleep(0.1)
                             return None
-
-                        print(f"实际读取: {len(buffer)} 字节")
 
                         if len(buffer) == 0:
                             # 没有数据，继续等待
-                            print("⚠ 未读取到数据，继续等待...")
                             self._warmup_frames += 1
                             time.sleep(0.1)
                             return None
 
-                        print(f"✓ 成功读取 {len(buffer)} 字节数据")
+                        # 尝试检测实际帧大小
+                        # 常见分辨率：1920x1080, 1280x720, 640x480
+                        possible_sizes = [
+                            (1920, 1080),  # Full HD
+                            (1280, 720),   # HD
+                            (640, 480),    # VGA
+                            (2560, 1440),  # 2K
+                            (3840, 2160),  # 4K
+                        ]
+
+                        detected = False
+                        for w, h in possible_sizes:
+                            size = w * h * 3
+                            if len(buffer) >= size:
+                                try:
+                                    test_frame = np.frombuffer(buffer[:size], dtype=np.uint8).reshape((h, w, 3))
+                                    self._detected_frame_size = size
+                                    self._actual_width = w
+                                    self._actual_height = h
+                                    detected = True
+                                    print(f"检测到分辨率: {w}x{h}")
+                                    break
+                                except ValueError:
+                                    continue
+
+                        if not detected:
+                            self._detected_frame_size = expected_frame_size
+                            self._actual_width = self.width
+                            self._actual_height = self.height
+                            print(f"使用配置分辨率: {self.width}x{self.height}")
+
+                        self._warmup_frames += 1
+                        return None  # 预热帧不返回
+
+                    except Exception as e:
+                        print(f"帧大小检测失败: {e}")
+                        self._detected_frame_size = expected_frame_size
+                        self._actual_width = self.width
+                        self._actual_height = self.height
+                else:
+                    # 超过预热帧数，使用配置值
+                    self._detected_frame_size = expected_frame_size
+                    self._actual_width = self.width
+                    self._actual_height = self.height
+                    print(f"预热超时，使用配置分辨率: {self.width}x{self.height}")
+
+            # 使用检测到的帧大小读取
+            frame_size = self._detected_frame_size
+
+            # 改进的读取逻辑：使用线程进行超时读取
+            import threading
+            import queue
+
+            raw_frame = b''
+            bytes_remaining = frame_size
+            max_attempts = 3  # 最多尝试3次
+            attempt = 0
+
+            while bytes_remaining > 0 and attempt < max_attempts:
+                # 使用线程读取，避免阻塞
+                result_queue = queue.Queue()
+
+                def read_chunk():
+                    try:
+                        data = self.ffmpeg_process.stdout.read(bytes_remaining)
+                        result_queue.put(('success', data))
+                    except Exception as e:
+                        result_queue.put(('error', str(e)))
+
+                # 启动读取线程
+                read_thread = threading.Thread(target=read_chunk, daemon=True)
+                read_thread.start()
+                read_thread.join(timeout=0.1)  # 100ms 超时
+
+                if read_thread.is_alive():
+                    attempt += 1
+                    time.sleep(0.01)
+                    continue
+
+                # 获取读取结果
+                try:
+                    status, chunk = result_queue.get_nowait()
+                    if status == 'error':
+                        break
+                except queue.Empty:
+                    attempt += 1
+                    time.sleep(0.01)
+                    continue
+
+                if len(chunk) == 0:
+                    attempt += 1
+                    time.sleep(0.01)
+                    continue
+
+                raw_frame += chunk
+                bytes_remaining -= len(chunk)
+                attempt += 1
+
+            # 检查是否读取了完整的帧
+            if len(raw_frame) != frame_size:
+                # 不完整帧静默处理
+
+                # 如果读取的字节数太少，可能是流出了问题
+                if len(raw_frame) < frame_size * 0.5:  # 少于50%
+                    self._frame_read_count += 1
+                    return None
+
+                # 尝试调整：如果读取的字节数接近期望值，尝试填充或截断
+                if len(raw_frame) > frame_size * 0.9:  # 超过90%
+                    if len(raw_frame) > frame_size:
+                        raw_frame = raw_frame[:frame_size]
+                    else:
+                        raw_frame = raw_frame + b'\x00' * (frame_size - len(raw_frame))
+
+            # 将原始数据转换为numpy数组
+            try:
+                frame = np.frombuffer(raw_frame, dtype=np.uint8).reshape(
+                    (self._actual_height, self._actual_width, 3)
+                )
+                self._frame_read_count += 1
+                return frame
+            except ValueError as e:
+                # reshape失败，重置检测
+                if self._frame_read_count < 5:
+                    self._detected_frame_size = None
+                    self._warmup_frames = 0
+                self._frame_read_count += 1
+                return None
+
+        except Exception as e:
+            print(f"FFmpeg读取异常: {e}")
+            return None
+        """
+        从FFmpeg进程读取一帧（改进版，支持帧大小自动检测和更健壮的读取逻辑）
+
+        Returns:
+            帧数据（BGR格式的numpy数组），读取失败返回None
+        """
+        if not self.ffmpeg_process or self.ffmpeg_process.poll() is not None:
+            return None
+
+        try:
+            # 初始化帧大小（第一次读取时可能需要调整）
+            if not hasattr(self, '_detected_frame_size'):
+                self._detected_frame_size = None
+                self._warmup_frames = 0
+                self._max_warmup_frames = 10  # 最多跳过10帧预热
+                self._frame_read_count = 0
+
+            # 计算期望的帧大小
+            expected_frame_size = self.width * self.height * 3  # BGR格式，3个通道
+
+            # 如果还未检测到实际帧大小，尝试自动检测
+            if self._detected_frame_size is None:
+                # 在预热阶段，尝试从缓冲区读取并检测实际帧大小
+                if self._warmup_frames < self._max_warmup_frames:
+                    # 在第一次预热时运行诊断
+                    if self._warmup_frames == 0:
+                        self._diagnose_ffmpeg_output()
+
+                    # 尝试读取一个较大的缓冲区来检测实际帧大小
+                    try:
+                        # 读取最大可能的帧大小（假设最大4K分辨率）
+                        max_buffer_size = 4096 * 2160 * 3
+
+                        # 使用线程进行超时读取（避免阻塞）
+                        import threading
+                        import queue
+
+                        result_queue = queue.Queue()
+
+                        def read_buffer():
+                            try:
+                                data = self.ffmpeg_process.stdout.read(max_buffer_size)
+                                result_queue.put(('success', data))
+                            except Exception as e:
+                                result_queue.put(('error', str(e)))
+
+                        # 启动读取线程
+                        read_thread = threading.Thread(target=read_buffer, daemon=True)
+                        read_thread.start()
+                        read_thread.join(timeout=2.0)  # 最多等待2秒
+
+                        if read_thread.is_alive():
+                            self._warmup_frames += 1
+                            time.sleep(0.2)
+                            return None
+
+                        # 获取读取结果
+                        try:
+                            status, buffer = result_queue.get_nowait()
+                            if status == 'error':
+                                self._warmup_frames += 1
+                                time.sleep(0.1)
+                                return None
+                        except queue.Empty:
+                            self._warmup_frames += 1
+                            time.sleep(0.1)
+                            return None
+
+                        if len(buffer) == 0:
+                            # 没有数据，继续等待
+                            self._warmup_frames += 1
+                            time.sleep(0.1)
+                            return None
 
                         # 尝试检测实际帧大小
                         # 常见分辨率：1920x1080, 1280x720, 640x480
@@ -792,7 +886,7 @@ class Go2RTCCamera:
                                     self._actual_width = w
                                     self._actual_height = h
                                     detected = True
-                                    print(f"✓ 检测到实际分辨率: {w}x{h}, 帧大小: {size} 字节")
+                                    print(f"检测到分辨率: {w}x{h}")
                                     break
                                 except ValueError:
                                     continue
@@ -802,15 +896,13 @@ class Go2RTCCamera:
                             self._detected_frame_size = expected_frame_size
                             self._actual_width = self.width
                             self._actual_height = self.height
-                            print(f"⚠ 无法自动检测帧大小，使用配置值: {self.width}x{self.height}")
+                            print(f"使用配置分辨率: {self.width}x{self.height}")
 
                         self._warmup_frames += 1
                         return None  # 预热帧不返回
 
                     except Exception as e:
-                        print(f"❌ 帧大小检测失败: {e}")
-                        import traceback
-                        traceback.print_exc()
+                        print(f"帧大小检测失败: {e}")
                         self._detected_frame_size = expected_frame_size
                         self._actual_width = self.width
                         self._actual_height = self.height
@@ -819,7 +911,7 @@ class Go2RTCCamera:
                     self._detected_frame_size = expected_frame_size
                     self._actual_width = self.width
                     self._actual_height = self.height
-                    print(f"预热完成，使用配置的帧大小: {self.width}x{self.height}")
+                    print(f"预热超时，使用配置分辨率: {self.width}x{self.height}")
 
             # 使用检测到的帧大小读取
             frame_size = self._detected_frame_size
@@ -851,8 +943,6 @@ class Go2RTCCamera:
 
                 if read_thread.is_alive():
                     # 读取超时
-                    if self._frame_read_count < 5:
-                        print(f"⚠ 读取尝试 {attempt + 1}: 超时（100ms）")
                     attempt += 1
                     time.sleep(0.01)
                     continue
@@ -861,7 +951,6 @@ class Go2RTCCamera:
                 try:
                     status, chunk = result_queue.get_nowait()
                     if status == 'error':
-                        print(f"❌ 读取错误: {chunk}")
                         break
                 except queue.Empty:
                     attempt += 1
@@ -870,8 +959,6 @@ class Go2RTCCamera:
 
                 if len(chunk) == 0:
                     # 没有数据可读
-                    if self._frame_read_count < 5:
-                        print(f"⚠ 读取尝试 {attempt + 1}: 无数据")
                     attempt += 1
                     time.sleep(0.01)
                     continue
@@ -882,11 +969,7 @@ class Go2RTCCamera:
 
             # 检查是否读取了完整的帧
             if len(raw_frame) != frame_size:
-                # 添加调试信息
-                if self._frame_read_count < 5:  # 只在前5帧打印详细信息
-                    print(f"❌ 帧读取不完整: 期望 {frame_size} 字节, 实际读取 {len(raw_frame)} 字节")
-                    print(f"   已尝试 {attempt} 次, 剩余 {bytes_remaining} 字节")
-                    print(f"   实际分辨率: {self._actual_width}x{self._actual_height}")
+                pass  # 不完整帧在正常运行中很常见，静默处理
 
                 # 如果读取的字节数太少，可能是流出了问题
                 if len(raw_frame) < frame_size * 0.5:  # 少于50%
@@ -906,15 +989,11 @@ class Go2RTCCamera:
                 frame = np.frombuffer(raw_frame, dtype=np.uint8).reshape(
                     (self._actual_height, self._actual_width, 3)
                 )
-                if self._frame_read_count < 3:
-                    print(f"✓ 成功读取第{self._frame_read_count + 1}帧: {self._actual_width}x{self._actual_height}")
                 self._frame_read_count += 1
                 return frame
             except ValueError as e:
-                # reshape失败，说明帧大小不对
+                # reshape失败，说明帧大小不对，重置检测
                 if self._frame_read_count < 5:
-                    print(f"❌ 帧reshape失败: {e}")
-                    print(f"   原始数据大小: {len(raw_frame)}, 目标形状: ({self._actual_height}, {self._actual_width}, 3)")
                     # 重置帧大小检测，尝试重新检测
                     self._detected_frame_size = None
                     self._warmup_frames = 0
@@ -922,9 +1001,7 @@ class Go2RTCCamera:
                 return None
 
         except Exception as e:
-            print(f"❌ 从FFmpeg读取帧时发生异常: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"FFmpeg读取异常: {e}")
             return None
 
     def _stop_ffmpeg_process(self) -> None:
@@ -1001,14 +1078,13 @@ class Go2RTCCamera:
 
         # 检查go2rtc连接
         if not self.check_connection():
-            print(f"警告: 无法连接到go2rtc服务器 {self.config.host}")
-            print("将尝试直接连接流地址...")
+            print(f"警告: 无法连接go2rtc服务器 {self.config.host}，尝试直连")
 
         # 根据配置选择启动方式
         if self.use_ffmpeg:
             # 使用FFmpeg转码方式
             if not self._start_ffmpeg_process():
-                print("FFmpeg转码进程启动失败，尝试使用OpenCV直接读取...")
+                print("FFmpeg启动失败，降级到OpenCV直接读取")
                 # 降级到OpenCV直接读取
                 self.use_ffmpeg = False
                 return self._start_opencv_direct()
@@ -1018,8 +1094,7 @@ class Go2RTCCamera:
                 self.thread = threading.Thread(target=self._update_with_ffmpeg, daemon=True)
                 self.thread.start()
 
-                print(f"go2rtc摄像头已启动（FFmpeg转码）: {self.config.camera_name}")
-                print(f"RTSP地址: {self.stream_url}")
+                print(f"go2rtc摄像头已启动（FFmpeg）: {self.config.camera_name}")
                 return True
         else:
             # 使用OpenCV直接读取（需要H264编码）
@@ -1051,8 +1126,7 @@ class Go2RTCCamera:
         self.thread = threading.Thread(target=self._update, daemon=True)
         self.thread.start()
 
-        print(f"go2rtc摄像头已启动（OpenCV直接读取）: {self.config.camera_name}")
-        print(f"流地址: {self.stream_url}")
+        print(f"go2rtc摄像头已启动（OpenCV）: {self.config.camera_name}")
         return True
 
     def _update(self) -> None:
@@ -1072,23 +1146,17 @@ class Go2RTCCamera:
             if not ret:
                 consecutive_errors += 1
 
-                # 只有连续多次失败才打印日志
-                if consecutive_errors == 1:
-                    print(f"⚠ 读取帧失败（H265解码不稳定，这是正常的）")
-
                 # 如果达到重新连接阈值，尝试重新连接
                 if consecutive_errors >= reconnect_threshold:
-                    print(f"连续{consecutive_errors}次读取失败，尝试重新连接...")
+                    print(f"连续{consecutive_errors}次读取失败，重新连接...")
                     self.cap.release()
                     time.sleep(1)  # 减少等待时间
                     self.cap = cv2.VideoCapture(self.stream_url)
                     if self.cap.isOpened():
-                        print("✓ 重新连接成功")
                         consecutive_errors = 0  # 重置计数
                     else:
-                        print("❌ 重新连接失败")
                         if consecutive_errors >= max_consecutive_errors:
-                            print(f"❌ 连续{max_consecutive_errors}次失败，停止读取")
+                            print(f"连续{max_consecutive_errors}次失败，停止读取")
                             break
                         time.sleep(2)
 
@@ -1098,7 +1166,6 @@ class Go2RTCCamera:
 
             # 读取成功，重置错误计数
             if consecutive_errors > 0:
-                print(f"✓ 读取恢复（之前连续失败{consecutive_errors}次）")
                 consecutive_errors = 0
 
             # 如果队列已满，移除最旧的帧
@@ -1124,10 +1191,10 @@ class Go2RTCCamera:
         while not self.stopped:
             # 检查FFmpeg进程是否还在运行
             if not self.ffmpeg_process or self.ffmpeg_process.poll() is not None:
-                print("FFmpeg进程已停止，尝试重启...")
+                print("FFmpeg进程已停止，重启中...")
                 # 尝试重启FFmpeg进程
                 if not self._start_ffmpeg_process():
-                    print("FFmpeg进程重启失败")
+                    print("FFmpeg重启失败")
                     break
                 consecutive_errors = 0
 
@@ -1137,7 +1204,7 @@ class Go2RTCCamera:
             if frame is None:
                 consecutive_errors += 1
                 if consecutive_errors >= max_consecutive_errors:
-                    print(f"连续{max_consecutive_errors}次读取帧失败，尝试重启FFmpeg进程...")
+                    print(f"连续{max_consecutive_errors}次读取失败，重启FFmpeg")
                     self._stop_ffmpeg_process()
                     consecutive_errors = 0
                 time.sleep(0.1)
