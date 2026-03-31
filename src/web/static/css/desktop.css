@@ -20,7 +20,7 @@
 body, .header, .video-card, .status-card, .records-section, .card-header,
 .stats-grid, .stat-item, .record, .notification-panel, .notification-item,
 .notification-header, .cat-select, .confirm-btn, .delete-btn, .status-indicator,
-.empty-state, .sidebar::-webkit-scrollbar-thumb, .theme-toggle {
+.empty-state, .sidebar::-webkit-scrollbar-thumb, .btn-theme {
     transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
@@ -202,9 +202,9 @@ body, .header, .video-card, .status-card, .records-section, .card-header,
 }
 
 /* Theme Toggle Button */
-.theme-toggle {
-    background: rgba(255, 255, 255, 0.15);
-    border: 2px solid rgba(255, 255, 255, 0.25);
+.btn-theme {
+    background: #636e72;
+    border: none;
     color: white;
     width: 56px;
     height: 56px;
@@ -217,12 +217,13 @@ body, .header, .video-card, .status-card, .records-section, .card-header,
     justify-content: center;
     box-sizing: border-box;
     padding: 0;
+    box-shadow: 0 2px 8px rgba(99, 110, 114, 0.3);
 }
 
-.theme-toggle:hover {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.35);
+.btn-theme:hover {
+    background: #748084;
     transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 110, 114, 0.4);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1373,13 +1374,6 @@ body {
     font-weight: 600;
     font-size: 13px;
     color: white;
-    flex: 1;
-}
-
-.monitor-log-title {
-    font-weight: 600;
-    font-size: 13px;
-    color: var(--primary);
     flex: 1;
 }
 
