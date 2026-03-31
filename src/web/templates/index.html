@@ -36,16 +36,6 @@
                 <div class="monitor-sidebar">
                     <div class="monitor-sidebar-title">服务状态</div>
                     <div class="monitor-component-list">
-                        <div class="monitor-component-item" data-service="main">
-                            <div class="monitor-component-info">
-                                <span class="monitor-component-name">Main</span>
-                                <span class="monitor-component-pid" id="monitor-pid-main">--</span>
-                            </div>
-                            <div class="monitor-component-status">
-                                <span class="monitor-status-dot" id="monitor-dot-main"></span>
-                                <span class="monitor-status-text" id="monitor-status-main">检查中</span>
-                            </div>
-                        </div>
                         <div class="monitor-component-item" data-service="manager">
                             <div class="monitor-component-info">
                                 <span class="monitor-component-name">Manager</span>
@@ -54,6 +44,16 @@
                             <div class="monitor-component-status">
                                 <span class="monitor-status-dot" id="monitor-dot-manager"></span>
                                 <span class="monitor-status-text" id="monitor-status-manager">检查中</span>
+                            </div>
+                        </div>
+                        <div class="monitor-component-item" data-service="main">
+                            <div class="monitor-component-info">
+                                <span class="monitor-component-name">Main</span>
+                                <span class="monitor-component-pid" id="monitor-pid-main">--</span>
+                            </div>
+                            <div class="monitor-component-status">
+                                <span class="monitor-status-dot" id="monitor-dot-main"></span>
+                                <span class="monitor-status-text" id="monitor-status-main">检查中</span>
                             </div>
                         </div>
                         <div class="monitor-component-item" data-service="go2rtc">
@@ -71,35 +71,35 @@
                 <!-- Right: Log Panels -->
                 <div class="monitor-log-area">
                     <div class="monitor-log-grid">
-                        <div class="monitor-log-panel" data-service="main">
-                            <div class="monitor-log-header">
-                                <span class="monitor-status-dot" id="monitor-log-dot-main"></span>
-                                <span class="monitor-log-title">Main</span>
-                                <div class="monitor-log-actions">
-                                    <button class="monitor-log-btn" onclick="clearMonitorLog('main')">Clear</button>
-                                    <button class="monitor-log-btn" onclick="scrollMonitorToBottom('main')">Bottom</button>
-                                </div>
-                            </div>
-                            <div class="monitor-log-content" id="monitor-log-main"></div>
-                        </div>
                         <div class="monitor-log-panel" data-service="manager">
                             <div class="monitor-log-header">
                                 <span class="monitor-status-dot" id="monitor-log-dot-manager"></span>
                                 <span class="monitor-log-title">Manager</span>
                                 <div class="monitor-log-actions">
-                                    <button class="monitor-log-btn" onclick="clearMonitorLog('manager')">Clear</button>
-                                    <button class="monitor-log-btn" onclick="scrollMonitorToBottom('manager')">Bottom</button>
+                                    <button class="monitor-log-btn" onclick="clearMonitorLog('manager')">清空</button>
+                                    <button class="monitor-log-btn" onclick="scrollMonitorToBottom('manager')">底部</button>
                                 </div>
                             </div>
                             <div class="monitor-log-content" id="monitor-log-manager"></div>
+                        </div>
+                        <div class="monitor-log-panel" data-service="main">
+                            <div class="monitor-log-header">
+                                <span class="monitor-status-dot" id="monitor-log-dot-main"></span>
+                                <span class="monitor-log-title">Main</span>
+                                <div class="monitor-log-actions">
+                                    <button class="monitor-log-btn" onclick="clearMonitorLog('main')">清空</button>
+                                    <button class="monitor-log-btn" onclick="scrollMonitorToBottom('main')">底部</button>
+                                </div>
+                            </div>
+                            <div class="monitor-log-content" id="monitor-log-main"></div>
                         </div>
                         <div class="monitor-log-panel" data-service="go2rtc">
                             <div class="monitor-log-header">
                                 <span class="monitor-status-dot" id="monitor-log-dot-go2rtc"></span>
                                 <span class="monitor-log-title">Go2rtc</span>
                                 <div class="monitor-log-actions">
-                                    <button class="monitor-log-btn" onclick="clearMonitorLog('go2rtc')">Clear</button>
-                                    <button class="monitor-log-btn" onclick="scrollMonitorToBottom('go2rtc')">Bottom</button>
+                                    <button class="monitor-log-btn" onclick="clearMonitorLog('go2rtc')">清空</button>
+                                    <button class="monitor-log-btn" onclick="scrollMonitorToBottom('go2rtc')">底部</button>
                                 </div>
                             </div>
                             <div class="monitor-log-content" id="monitor-log-go2rtc"></div>
