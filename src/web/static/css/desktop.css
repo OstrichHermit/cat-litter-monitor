@@ -203,7 +203,7 @@ body, .header, .video-card, .status-card, .records-section, .card-header,
 
 /* Theme Toggle Button */
 .btn-theme {
-    background: #636e72;
+    background: linear-gradient(135deg, #5b9ea6, #7ebfc8);
     border: none;
     color: white;
     width: 56px;
@@ -217,13 +217,13 @@ body, .header, .video-card, .status-card, .records-section, .card-header,
     justify-content: center;
     box-sizing: border-box;
     padding: 0;
-    box-shadow: 0 2px 8px rgba(99, 110, 114, 0.3);
+    box-shadow: 0 2px 8px rgba(91, 158, 166, 0.3);
 }
 
 .btn-theme:hover {
-    background: #748084;
+    background: linear-gradient(135deg, #6baeb6, #8ecfd8);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(99, 110, 114, 0.4);
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -273,7 +273,7 @@ body {
 }
 
 .btn-stop {
-    background: var(--danger);
+    background: linear-gradient(135deg, #c05050, #d47a7a);
     color: white;
     border: none;
     padding: 10px 24px;
@@ -282,13 +282,13 @@ body {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s;
-    box-shadow: 0 2px 8px rgba(192, 57, 43, 0.3);
+    box-shadow: 0 2px 8px rgba(192, 80, 80, 0.3);
     height: 56px;
     box-sizing: border-box;
 }
 
 .btn-stop:hover:not(:disabled) {
-    background: var(--danger-light);
+    background: linear-gradient(135deg, #d06060, #e09090);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(192, 57, 43, 0.4);
 }
@@ -320,7 +320,7 @@ body {
 }
 
 .btn-restart {
-    background: #2980b9;
+    background: linear-gradient(135deg, #5078b5, #7098cc);
     color: white;
     border: none;
     padding: 10px 24px;
@@ -329,13 +329,13 @@ body {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s;
-    box-shadow: 0 2px 8px rgba(41, 128, 185, 0.3);
+    box-shadow: 0 2px 8px rgba(80, 120, 181, 0.3);
     height: 56px;
     box-sizing: border-box;
 }
 
 .btn-restart:hover:not(:disabled) {
-    background: #3498db;
+    background: linear-gradient(135deg, #6088c5, #80a8dc);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(41, 128, 185, 0.4);
 }
@@ -354,21 +354,21 @@ body {
     font-size: 18px;
     font-weight: 500;
     color: white;
-    padding: 10px 28px;
+    padding: 10px 24px;
     border-radius: var(--radius-sm);
     transition: all 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #d4a017;
-    border: 2px solid #c9a227;
+    background: linear-gradient(135deg, #c49035, #d8b050);
+    border: none;
     height: 56px;
     box-sizing: border-box;
-    box-shadow: 0 2px 8px rgba(212, 160, 23, 0.3);
+    box-shadow: 0 2px 8px rgba(196, 144, 53, 0.3);
 }
 
 .notification-icon:hover {
-    background: #e6b800;
+    background: linear-gradient(135deg, #d4a045, #e0c060);
     border-color: #d4a017;
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(212, 160, 23, 0.4);
@@ -1150,7 +1150,8 @@ body {
     border-radius: var(--radius-sm);
     background: linear-gradient(135deg, #6c5ce7, #a29bfe);
     color: white;
-    font-size: 16px;
+    font-size: 18px;
+    font-weight: 500;
     cursor: pointer;
     transition: all 0.2s;
     display: flex;
