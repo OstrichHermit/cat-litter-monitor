@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>猫厕所监控系统</title>
-    <link rel="stylesheet" href="/static/css/desktop.css?v=12">
+    <link rel="stylesheet" href="/static/css/desktop.css?v=13">
 </head>
 <body>
     <div class="app">
@@ -27,6 +27,10 @@
 
         <!-- Service Monitor Panel -->
         <div id="monitorPanel" class="monitor-panel">
+            <div class="monitor-panel-header">
+                <div class="monitor-panel-title">🖥️ 服务监控</div>
+                <button class="monitor-panel-close" onclick="toggleMonitorPanel()">✕</button>
+            </div>
             <div class="monitor-content">
                 <!-- Left: Component Status Sidebar -->
                 <div class="monitor-sidebar">
@@ -235,6 +239,6 @@
         </div>
     </div>
 
-    <script src="/static/js/desktop.js?v=6"></script>
+    <script src="/static/js/desktop.js?v=7"></script>
 </body>
 </html>
