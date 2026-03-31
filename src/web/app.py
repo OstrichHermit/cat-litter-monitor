@@ -177,9 +177,13 @@ def ensure_timestamp(line: str) -> str:
     """如果日志行没有时间戳前缀，自动补充当前时间"""
     if not line:
         return line
-    # 检测已有时间戳格式：[YYYY-MM-DD HH:MM:SS] 或 YYYY-MM-DD HH:MM:SS
+    # 检测已有时间戳格式：
+    # 1. [YYYY-MM-DD HH:MM:SS] 或 YYYY-MM-DD HH:MM:SS（TeeWriter / Logger 格式）
+    # 2. HH:MM:SS.mmm INF/WRN/ERR（go2rtc 格式）
     import re
     if re.match(r'^\[{0,1}\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}', line):
+        return line
+    if re.match(r'^\d{2}:\d{2}:\d{2}\.\d+\s+(INF|WRN|ERR|DBG)', line):
         return line
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return f"[{timestamp}] {line}"
