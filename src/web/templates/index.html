@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>猫厕所监控系统</title>
-    <link rel="stylesheet" href="/static/css/desktop.css?v=13">
+    <link rel="stylesheet" href="/static/css/desktop.css?v=14">
 </head>
 <body>
     <div class="app">
@@ -14,8 +14,8 @@
                 <p>实时监控与智能统计</p>
             </div>
             <div style="display: flex; align-items: center; gap: 20px;">
+                <button id="themeToggle" class="btn-theme" onclick="toggleTheme()" title="切换深色模式">🌙</button>
                 <button id="monitorToggle" class="btn-monitor" onclick="toggleMonitorPanel()" title="服务监控">🖥️ 监控</button>
-                <button id="themeToggle" class="theme-toggle" title="切换深色模式">🌙</button>
                 <div id="notificationIcon" class="notification-icon" onclick="openNotifications()">
                     🔔 新纪录
                     <span id="notificationBadge" class="notification-badge hidden">0</span>
