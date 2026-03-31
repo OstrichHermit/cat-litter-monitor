@@ -167,10 +167,22 @@ def read_last_lines(log_file: Path, lines: int = 100) -> List[str]:
     try:
         with open(log_file, "r", encoding="utf-8") as f:
             all_lines = f.readlines()
-            result = [line.strip() for line in all_lines[-lines:] if line.strip()]
+            result = [ensure_timestamp(line.strip()) for line in all_lines[-lines:] if line.strip()]
             return result if result else ["等待日志输出..."]
     except Exception as e:
         return [f"读取日志失败: {e}"]
+
+
+def ensure_timestamp(line: str) -> str:
+    """如果日志行没有时间戳前缀，自动补充当前时间"""
+    if not line:
+        return line
+    # 检测已有时间戳格式：[YYYY-MM-DD HH:MM:SS] 或 YYYY-MM-DD HH:MM:SS
+    import re
+    if re.match(r'^\[{0,1}\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}', line):
+        return line
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return f"[{timestamp}] {line}"
 
 
 class WebApp:
@@ -893,7 +905,7 @@ class WebApp:
                         while True:
                             line = f.readline()
                             if line:
-                                await websocket.send_json({"type": "log", "data": line.strip()})
+                                await websocket.send_json({"type": "log", "data": ensure_timestamp(line.strip())})
                             else:
                                 await asyncio.sleep(0.1)
                 else:
@@ -907,7 +919,7 @@ class WebApp:
                                 while True:
                                     line = f.readline()
                                     if line:
-                                        await websocket.send_json({"type": "log", "data": line.strip()})
+                                        await websocket.send_json({"type": "log", "data": ensure_timestamp(line.strip())})
                                     else:
                                         await asyncio.sleep(0.1)
 

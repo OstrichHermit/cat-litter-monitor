@@ -678,7 +678,6 @@ class Go2RTCCamera:
                                     self._actual_width = w
                                     self._actual_height = h
                                     detected = True
-                                    print(f"检测到分辨率: {w}x{h}")
                                     break
                                 except ValueError:
                                     continue
@@ -687,13 +686,11 @@ class Go2RTCCamera:
                             self._detected_frame_size = expected_frame_size
                             self._actual_width = self.width
                             self._actual_height = self.height
-                            print(f"使用配置分辨率: {self.width}x{self.height}")
 
                         self._warmup_frames += 1
                         return None  # 预热帧不返回
 
                     except Exception as e:
-                        print(f"帧大小检测失败: {e}")
                         self._detected_frame_size = expected_frame_size
                         self._actual_width = self.width
                         self._actual_height = self.height
@@ -702,7 +699,6 @@ class Go2RTCCamera:
                     self._detected_frame_size = expected_frame_size
                     self._actual_width = self.width
                     self._actual_height = self.height
-                    print(f"预热超时，使用配置分辨率: {self.width}x{self.height}")
 
             # 使用检测到的帧大小读取
             frame_size = self._detected_frame_size
@@ -886,7 +882,6 @@ class Go2RTCCamera:
                                     self._actual_width = w
                                     self._actual_height = h
                                     detected = True
-                                    print(f"检测到分辨率: {w}x{h}")
                                     break
                                 except ValueError:
                                     continue
@@ -896,13 +891,11 @@ class Go2RTCCamera:
                             self._detected_frame_size = expected_frame_size
                             self._actual_width = self.width
                             self._actual_height = self.height
-                            print(f"使用配置分辨率: {self.width}x{self.height}")
 
                         self._warmup_frames += 1
                         return None  # 预热帧不返回
 
                     except Exception as e:
-                        print(f"帧大小检测失败: {e}")
                         self._detected_frame_size = expected_frame_size
                         self._actual_width = self.width
                         self._actual_height = self.height
@@ -911,7 +904,6 @@ class Go2RTCCamera:
                     self._detected_frame_size = expected_frame_size
                     self._actual_width = self.width
                     self._actual_height = self.height
-                    print(f"预热超时，使用配置分辨率: {self.width}x{self.height}")
 
             # 使用检测到的帧大小读取
             frame_size = self._detected_frame_size
