@@ -6,8 +6,17 @@
 
 import sys
 import os
+import re
 from pathlib import Path
 from datetime import datetime
+
+# 匹配 ANSI 转义序列（颜色代码等）
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def strip_ansi(text: str) -> str:
+    """剥离 ANSI 转义序列"""
+    return _ANSI_RE.sub('', text)
 
 
 class TeeWriter:
@@ -23,7 +32,7 @@ class TeeWriter:
         if self.buffer and self.log_file is not None:
             try:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                self.log_file.write(f"[{timestamp}] {self.buffer}")
+                self.log_file.write(f"[{timestamp}] {strip_ansi(self.buffer)}")
                 self.buffer = ""
                 self.log_file.flush()
             except Exception:
@@ -54,7 +63,7 @@ class TeeWriter:
             try:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 for line in lines[:-1]:
-                    self.log_file.write(f"[{timestamp}] {line}\n")
+                    self.log_file.write(f"[{timestamp}] {strip_ansi(line)}\n")
                 self.log_file.flush()
             except Exception:
                 pass
