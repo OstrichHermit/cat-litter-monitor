@@ -238,18 +238,19 @@ body {
 .app {
     display: grid;
     grid-template-rows: auto 1fr;
-    min-height: 100vh;
+    height: 100vh;
     max-width: 1800px;
     margin: 0 auto;
-    padding: 16px;
-    gap: 16px;
+    padding: 12px;
+    gap: 12px;
+    overflow: hidden;
 }
 
 /* Header */
 .header {
     background: var(--primary);
     color: white;
-    padding: 20px 28px;
+    padding: 14px 24px;
     border-radius: var(--radius);
     display: flex;
     justify-content: space-between;
@@ -1276,6 +1277,9 @@ body {
     border: 1px solid var(--gray-200);
     cursor: pointer;
     transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .monitor-component-item:hover {
@@ -1286,9 +1290,8 @@ body {
 
 .monitor-component-info {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 6px;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .monitor-component-name {
