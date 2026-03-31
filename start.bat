@@ -60,5 +60,5 @@ echo Logs: logs\go2rtc.log  logs\main.log  logs\manager.log
 echo Web: http://localhost:5000
 echo Stop: run stop.bat
 echo.
-echo Press any key to close (services keep running)...
-pause >nul
+
+timeout /t 1 /nobreak >nul

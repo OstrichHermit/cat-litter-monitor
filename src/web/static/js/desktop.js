@@ -599,6 +599,7 @@ const monitorServices = ['main', 'manager', 'go2rtc'];
 let monitorStatusWS = null;
 let monitorLogWS = {};
 let monitorAutoScroll = {};
+let monitorWSInitialized = false;
 
 // 初始化自动滚动状态
 monitorServices.forEach(s => monitorAutoScroll[s] = true);
@@ -611,14 +612,14 @@ function toggleMonitorPanel() {
     if (isOpen) {
         panel.classList.remove('open');
         btn.classList.remove('active');
-        // 关闭 WebSocket 连接
-        disconnectMonitorWS();
     } else {
         panel.classList.add('open');
         btn.classList.add('active');
-        // 连接 WebSocket
-        connectMonitorStatusWS();
-        monitorServices.forEach(s => connectMonitorLogWS(s));
+        if (!monitorWSInitialized) {
+            connectMonitorStatusWS();
+            monitorServices.forEach(s => connectMonitorLogWS(s));
+            monitorWSInitialized = true;
+        }
     }
 }
 
@@ -650,11 +651,8 @@ function connectMonitorStatusWS() {
         };
 
         monitorStatusWS.onclose = () => {
-            // 3秒后重连（如果面板还开着）
             setTimeout(() => {
-                if (document.getElementById('monitorPanel').classList.contains('open')) {
-                    connectMonitorStatusWS();
-                }
+                connectMonitorStatusWS();
             }, 3000);
         };
 
@@ -680,9 +678,7 @@ function connectMonitorLogWS(service) {
 
         monitorLogWS[service].onclose = () => {
             setTimeout(() => {
-                if (document.getElementById('monitorPanel').classList.contains('open')) {
-                    connectMonitorLogWS(service);
-                }
+                connectMonitorLogWS(service);
             }, 3000);
         };
 
