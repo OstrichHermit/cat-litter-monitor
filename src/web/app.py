@@ -1122,7 +1122,8 @@ class WebApp:
             self.app,
             host=self.host,
             port=self.port,
-            log_level="debug" if self.debug else "info"
+            log_level="debug" if self.debug else "warning",
+            access_log=False
         )
 
 
