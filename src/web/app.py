@@ -174,17 +174,19 @@ def read_last_lines(log_file: Path, lines: int = 100) -> List[str]:
 
 
 def ensure_timestamp(line: str) -> str:
-    """如果日志行没有时间戳前缀，自动补充当前时间"""
+    """统一日志行时间戳格式为 [YYYY-MM-DD HH:MM:SS]"""
     if not line:
         return line
-    # 检测已有时间戳格式：
-    # 1. [YYYY-MM-DD HH:MM:SS] 或 YYYY-MM-DD HH:MM:SS（TeeWriter / Logger 格式）
-    # 2. HH:MM:SS.mmm INF/WRN/ERR（go2rtc 格式）
     import re
-    if re.match(r'^\[{0,1}\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}', line):
+    # 已有统一格式，直接返回
+    if re.match(r'^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\]', line):
         return line
-    if re.match(r'^\d{2}:\d{2}:\d{2}\.\d+\s+(INF|WRN|ERR|DBG)', line):
-        return line
+    # go2rtc 格式：HH:MM:SS.mmm INF/WRN/ERR message → 剥掉前缀，用我们的时间戳
+    go2rtc_match = re.match(r'^\d{2}:\d{2}:\d{2}\.\d+\s+(?:INF|WRN|ERR|DBG)\s+(.*)', line)
+    if go2rtc_match:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return f"[{timestamp}] {go2rtc_match.group(1)}"
+    # 其他无时间戳行，补充当前时间
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return f"[{timestamp}] {line}"
 
