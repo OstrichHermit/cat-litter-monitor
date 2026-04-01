@@ -26,7 +26,7 @@ from src.utils.logger import get_logger, setup_logger_from_config
 from src.core.camera import create_camera_from_config
 from src.core.cat_detector import CatDetector
 from src.core.object_tracker import ObjectTracker
-from src.core.behavior_analyzer import BehaviorAnalyzer, ROI, MultiROI
+from src.core.roi import MultiROI
 from src.core.photo_capture import PhotoCaptureManager, PhotoCaptureConfig
 from src.storage.database import Database
 from src.web.app import WebApp, create_templates_directory
@@ -122,57 +122,15 @@ class LitterMonitorSystem:
 
         # 初始化ROI（支持多ROI）
         roi_config = self.config.get_roi_config()
-        multi_roi = None
 
         # 检查是否是新的多ROI格式
         if 'rois' in roi_config:
-            # 新格式：多ROI
-            rois_list = []
-            for roi_data in roi_config['rois']:
-                if roi_data.get('type') == 'rectangle':
-                    rect = roi_data.get('rectangle', {})
-                    roi = ROI(
-                        roi_type='rectangle',
-                        rectangle=[rect.get('x', 100), rect.get('y', 100),
-                                  rect.get('width', 300), rect.get('height', 300)]
-                    )
-                else:
-                    roi = ROI(
-                        roi_type='polygon',
-                        polygon=roi_data.get('polygon', [])
-                    )
-                rois_list.append(roi)
+            self.multi_roi = MultiROI(rois=roi_config['rois'])
+            self.logger.info(f"加载了 {len(roi_config['rois'])} 个ROI区域")
+        else:
+            raise ValueError("roi.rois 配置缺失，请检查配置文件")
 
-            multi_roi = MultiROI(rois_list)
-            self.logger.info(f"加载了 {len(rois_list)} 个ROI区域")
-
-        elif roi_config.get('type'):
-            # 旧格式：单个ROI，保持向后兼容
-            if roi_config.get('type') == 'rectangle':
-                rect = roi_config.get('rectangle', {})
-                roi = ROI(
-                    roi_type='rectangle',
-                    rectangle=[rect.get('x', 100), rect.get('y', 100),
-                              rect.get('width', 300), rect.get('height', 300)]
-                )
-            else:
-                roi = ROI(
-                    roi_type='polygon',
-                    polygon=roi_config.get('polygon', [])
-                )
-            multi_roi = MultiROI([roi])
-            self.logger.info("加载了单个ROI区域（旧格式）")
-
-        # 初始化行为分析器
-        behavior_config = self.config.get_behavior_config()
-        self.analyzer = BehaviorAnalyzer(
-            multi_roi=multi_roi,
-            min_frames_in_roi=roi_config.get('min_frames_in_roi', 15),
-            exit_delay_frames=roi_config.get('exit_delay_frames', 30),
-            min_duration=behavior_config.get('min_duration', 5.0),
-            min_interval=behavior_config.get('min_interval', 30.0)
-        )
-        self.logger.info("行为分析器初始化完成")
+        self.logger.info("ROI区域加载完成")
 
         # 初始化数据库
         database_config = self.config.get_database_config()
@@ -347,16 +305,12 @@ class LitterMonitorSystem:
         # 追踪
         tracks = self.tracker.update(detections)
 
-        # 行为分析
-        fps = self._actual_fps
-        completed_events = self.analyzer.update(tracks, fps)
-
         # 拍照管理：检查每个ROI区域是否需要拍照
         # 统计每个ROI区域是否有检测
         roi_detection_map = {}  # roi_index -> has_detection
 
         # 首先标记所有ROI为无检测
-        for i in range(1, len(self.analyzer.multi_roi.rois) + 1):
+        for i in range(1, len(self.multi_roi.rois) + 1):
             roi_detection_map[i] = False
 
         # 检查每个track所在的ROI
@@ -376,7 +330,7 @@ class LitterMonitorSystem:
                 continue
 
             # 判断在哪个ROI内
-            roi_index = self.analyzer.multi_roi.get_roi_id(center) or 0
+            roi_index = self.multi_roi.get_roi_id(center) or 0
             if roi_index > 0:
                 roi_detection_map[roi_index] = True
 
@@ -386,7 +340,7 @@ class LitterMonitorSystem:
                 roi_index,
                 has_detection,
                 frame,
-                fps
+                self._actual_fps
             )
 
             if photo_path:
@@ -400,7 +354,6 @@ class LitterMonitorSystem:
         # 更新Web数据
         self.web_app.update_detections(detections)
         self.web_app.update_tracks(tracks)
-        self.web_app.update_events(self.analyzer.get_completed_events())
 
         return display_frame
 
@@ -416,13 +369,13 @@ class LitterMonitorSystem:
         Args:
             frame: 输入帧
             detections: 检测列表
-            tracks: 追踪列表（保留用于行为分析，但不绘制）
+            tracks: 追踪列表
 
         Returns:
             绘制后的帧
         """
-        # 绘制行为分析结果（ROI区域等）
-        frame = self.analyzer.draw_analysis(frame, tracks)
+        # 绘制ROI区域
+        frame = self.multi_roi.draw_all(frame)
 
         # 只绘制检测结果（绿色Cat框 + 中心点）
         for detection in detections:

@@ -269,7 +269,6 @@ class WebApp:
             'frame': None,
             'detections': [],
             'tracks': [],
-            'events': [],
             'statistics': {}
         }
 
@@ -318,12 +317,6 @@ class WebApp:
         async def statistics():
             """获取统计数据"""
             return JSONResponse(self.system_state['statistics'])
-
-        @self.app.get('/api/events')
-        async def events():
-            """获取事件列表"""
-            events_data = [e.to_dict() if hasattr(e, 'to_dict') else e for e in self.system_state['events']]
-            return JSONResponse(events_data[-100:])  # 返回最近100条事件
 
         @self.app.get('/api/records/today')
         async def records_today():
@@ -1042,19 +1035,6 @@ class WebApp:
         except Exception as e:
             # 静默处理，避免影响主循环
             self.system_state['tracks'] = []
-
-    def update_events(self, events: list) -> None:
-        """
-        更新事件列表
-
-        Args:
-            events: 事件列表
-        """
-        try:
-            self.system_state['events'] = events
-        except Exception as e:
-            # 静默处理，避免影响主循环
-            self.system_state['events'] = []
 
     def update_statistics(self, statistics: Dict) -> None:
         """

@@ -1,11 +1,6 @@
 # 猫砂盆监控系统 - 配置文件示例
 # 复制此文件为 default.yaml 并根据实际情况修改
 
-# 行为分析
-behavior:
-  min_duration: 5        # 最短停留时间（秒），低于此时间不计入有效记录
-  min_interval: 30       # 最短记录间隔（秒），同一只猫的两次记录最小间隔
-
 # 摄像头配置（通过 go2rtc 获取视频流，OpenCV 直接读取）
 camera:
   buffer_size: 1         # 缓冲帧数
@@ -30,15 +25,13 @@ go2rtc:
   camera_name: my_camera       # 摄像头名称（需与 go2rtc.yaml 中配置一致）
   host: localhost              # Go2rtc 主机地址
   rtsp_port: 8554              # RTSP 端口
-  use_webrtc: false            # 是否启用 WebRTC
 
 # 日志配置
 logging:
-  backup_count: 5              # 日志备份数量
   console: true                # 是否输出到控制台
   file: logs/litter_monitor.log
   level: INFO
-  max_bytes: 10                # 单个日志文件最大大小（MB）
+  max_lines: 2000             # 日志文件最大行数，超出后裁剪旧日志
 
 # 管理器配置
 manager:
@@ -49,24 +42,12 @@ manager:
 photo:
   min_stay_seconds: 1          # 最短停留时间（秒），低于此不拍照
   photo_base_dir: photo        # 照片存储目录
-  photo_interval:              # 拍照间隔（秒），支持多个间隔轮换
+  photo_interval:              # 拍照间隔（秒），支持每个RROI区域不同数值
     - 90.0
     - 90.0
 
-# ROI 配置（感兴趣区域）
+# ROI 配置（猫砂盆区域）
 roi:
-  exit_delay_frames: 30        # 离开 ROI 后延迟帧数
-  min_frames_in_roi: 15        # ROI 内最少帧数才算有效停留
-  polygon:                     # 单 ROI 多边形坐标示例（像素坐标）
-    - [100, 100]
-    - [400, 100]
-    - [400, 400]
-    - [100, 400]
-  rectangle:                   # 矩形 ROI（与 polygon 二选一）
-    height: 300
-    width: 200
-    x: 100
-    y: 100
   rois:                        # 多 ROI 配置（使用 ROI 标注工具生成）
     # - id: 1
     #   name: 猫砂盆1
@@ -76,7 +57,6 @@ roi:
     #     - [x3, y3]
     #     - [x4, y4]
     #   type: polygon
-  type: rectangle              # ROI 类型: rectangle / polygon
 
 # 系统配置
 system:

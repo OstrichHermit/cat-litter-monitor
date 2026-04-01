@@ -27,7 +27,6 @@ class Go2RTCConfig:
         rtsp_port: RTSP端口
         api_port: API端口
         camera_name: 摄像头名称
-        use_webrtc: 是否使用WebRTC流
         username: RTSP认证用户名（可选）
         password: RTSP认证密码（可选）
     """
@@ -35,7 +34,6 @@ class Go2RTCConfig:
     rtsp_port: int = 8554
     api_port: int = 1984
     camera_name: str = "xiaomi_cam"
-    use_webrtc: bool = False
     username: Optional[str] = None
     password: Optional[str] = None
 
@@ -356,7 +354,6 @@ class Go2RTCCamera:
             'type': 'go2rtc',
             'host': self.config.host,
             'camera_name': self.config.camera_name,
-            'use_webrtc': self.config.use_webrtc,
             'stream_url': self.stream_url,
             'width': self.width,
             'height': self.height,
@@ -413,7 +410,6 @@ def create_camera_from_config(config: Dict[str, Any]) -> Go2RTCCamera:
         rtsp_port=go2rtc_config.get('rtsp_port', 8554),
         api_port=go2rtc_config.get('api_port', 1984),
         camera_name=go2rtc_config.get('camera_name', 'xiaomi_cam'),
-        use_webrtc=go2rtc_config.get('use_webrtc', False),
         username=go2rtc_config.get('username'),
         password=go2rtc_config.get('password')
     )
