@@ -1,13 +1,11 @@
 """
 日志模块
 
-该模块提供统一的日志记录接口，支持文件日志和控制台输出，
-并支持日志轮转。
+该模块提供统一的日志记录接口，支持文件日志和控制台输出。
 """
 
 import os
 import logging
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional
 import colorlog
@@ -17,7 +15,7 @@ class Logger:
     """
     日志管理类
 
-    该类负责配置和管理系统日志，支持文件日志、控制台输出和日志轮转。
+    该类负责配置和管理系统日志，支持文件日志和控制台输出。
 
     Attributes:
         logger: logger实例
@@ -41,8 +39,7 @@ class Logger:
         level: str = 'INFO',
         log_dir: Optional[str] = None,
         console: bool = True,
-        max_bytes: int = 10 * 1024 * 1024,
-        backup_count: int = 5
+        max_lines: int = 2000
     ):
         """
         初始化日志管理器
@@ -53,8 +50,7 @@ class Logger:
             level: 日志级别
             log_dir: 日志目录，如果为None则使用项目根目录下的logs目录
             console: 是否输出到控制台
-            max_bytes: 日志文件最大大小（字节）
-            backup_count: 备份文件数量
+            max_lines: 日志文件最大行数，超出后裁剪旧日志
         """
         self.logger = logging.getLogger(name)
         self.logger.setLevel(self.LOG_LEVELS.get(level.upper(), logging.INFO))
@@ -78,6 +74,10 @@ class Logger:
             log_file = 'litter_monitor.log'
 
         self.log_file = self.log_dir / log_file
+        self.max_lines = max_lines
+
+        # 裁剪旧日志
+        self._trim_log_file()
 
         # 创建formatter
         formatter = logging.Formatter(
@@ -86,10 +86,8 @@ class Logger:
         )
 
         # 添加文件处理器
-        file_handler = RotatingFileHandler(
+        file_handler = logging.FileHandler(
             self.log_file,
-            maxBytes=max_bytes,
-            backupCount=backup_count,
             encoding='utf-8'
         )
         file_handler.setLevel(logging.DEBUG)
@@ -113,6 +111,19 @@ class Logger:
             console_handler.setFormatter(console_formatter)
             self.logger.addHandler(console_handler)
 
+    def _trim_log_file(self) -> None:
+        """裁剪日志文件，保留最近 max_lines 行"""
+        try:
+            if not self.log_file.exists():
+                return
+            with open(self.log_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            if len(lines) > self.max_lines:
+                with open(self.log_file, 'w', encoding='utf-8') as f:
+                    f.writelines(lines[-self.max_lines:])
+        except Exception:
+            pass
+
     def debug(self, message: str) -> None:
         """
         记录DEBUG级别日志
@@ -121,6 +132,7 @@ class Logger:
             message: 日志消息
         """
         self.logger.debug(message)
+        self._trim_log_file()
 
     def info(self, message: str) -> None:
         """
@@ -130,6 +142,7 @@ class Logger:
             message: 日志消息
         """
         self.logger.info(message)
+        self._trim_log_file()
 
     def warning(self, message: str) -> None:
         """
@@ -139,6 +152,7 @@ class Logger:
             message: 日志消息
         """
         self.logger.warning(message)
+        self._trim_log_file()
 
     def error(self, message: str) -> None:
         """
@@ -148,6 +162,7 @@ class Logger:
             message: 日志消息
         """
         self.logger.error(message)
+        self._trim_log_file()
 
     def critical(self, message: str) -> None:
         """
@@ -157,6 +172,7 @@ class Logger:
             message: 日志消息
         """
         self.logger.critical(message)
+        self._trim_log_file()
 
     def exception(self, message: str) -> None:
         """
@@ -166,6 +182,7 @@ class Logger:
             message: 日志消息
         """
         self.logger.exception(message)
+        self._trim_log_file()
 
     def set_level(self, level: str) -> None:
         """
@@ -196,8 +213,7 @@ def get_logger(
     level: str = 'INFO',
     log_dir: Optional[str] = None,
     console: bool = True,
-    max_bytes: int = 10 * 1024 * 1024,
-    backup_count: int = 5
+    max_lines: int = 2000
 ) -> Logger:
     """
     获取全局logger实例
@@ -208,8 +224,7 @@ def get_logger(
         level: 日志级别
         log_dir: 日志目录
         console: 是否输出到控制台
-        max_bytes: 日志文件最大大小（字节）
-        backup_count: 备份文件数量
+        max_lines: 日志文件最大行数
 
     Returns:
         Logger实例
@@ -223,8 +238,7 @@ def get_logger(
             level=level,
             log_dir=log_dir,
             console=console,
-            max_bytes=max_bytes,
-            backup_count=backup_count
+            max_lines=max_lines
         )
 
     return _global_logger
@@ -239,8 +253,7 @@ def setup_logger_from_config(config: dict) -> Logger:
             - level: 日志级别
             - file: 日志文件名
             - console: 是否输出到控制台
-            - max_bytes: 日志文件最大大小（MB）
-            - backup_count: 备份文件数量
+            - max_lines: 日志文件最大行数
 
     Returns:
         Logger实例
@@ -248,8 +261,7 @@ def setup_logger_from_config(config: dict) -> Logger:
     level = config.get('level', 'INFO')
     log_file = config.get('file', 'litter_monitor.log')
     console = config.get('console', True)
-    max_bytes = config.get('max_bytes', 10) * 1024 * 1024
-    backup_count = config.get('backup_count', 5)
+    max_lines = config.get('max_lines', 2000)
 
     # 从路径中提取文件名（Logger 类会自动在 logs 目录下创建）
     import os
@@ -259,6 +271,5 @@ def setup_logger_from_config(config: dict) -> Logger:
         level=level,
         log_file=log_file,
         console=console,
-        max_bytes=max_bytes,
-        backup_count=backup_count
+        max_lines=max_lines
     )
