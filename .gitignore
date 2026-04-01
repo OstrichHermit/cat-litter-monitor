@@ -179,13 +179,19 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
-*.db
-data/litter_monitor.db
-
 # Cat litter monitor specific
-photo/
-data/models/yolo26x.pt
-*.db-journal
-logs/litter_monitor.log.1
+
+# 配置文件（包含个人路径和坐标）
+config/default.yaml
+
+# 数据目录
+data/litter_monitor.db
+data/models/
 data/manager_state.json
-/logs
+*.db-journal
+
+# 照片目录
+photo/
+
+# 日志目录
+logs/

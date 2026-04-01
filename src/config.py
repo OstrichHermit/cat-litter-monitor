@@ -154,15 +154,6 @@ class Config:
         """
         return self.config.get('tracking', {})
 
-    def get_classifier_config(self) -> Dict[str, Any]:
-        """
-        获取分类器配置
-
-        Returns:
-            分类器配置字典
-        """
-        return self.config.get('classifier', {})
-
     def get_roi_config(self) -> Dict[str, Any]:
         """
         获取ROI配置
