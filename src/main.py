@@ -7,6 +7,7 @@
 import sys
 import signal
 import time
+import traceback
 import threading
 import json
 from pathlib import Path
@@ -302,13 +303,11 @@ class LitterMonitorSystem:
                 except Exception as frame_error:
                     # 单帧处理异常，记录但继续运行
                     self.logger.error(f"处理帧时出错 (frame {self.frame_count}): {frame_error}")
-                    import traceback
                     self.logger.debug(traceback.format_exc())
                     continue
 
         except Exception as e:
             self.logger.error(f"主循环严重异常: {e}")
-            import traceback
             self.logger.debug(traceback.format_exc())
         finally:
             self.stop()
@@ -479,7 +478,6 @@ class LitterMonitorSystem:
             self.stop()
 
         # 等待停止完成
-        import time
         time.sleep(2)
 
         # 重新启动系统
