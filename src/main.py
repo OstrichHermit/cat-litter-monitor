@@ -23,7 +23,7 @@ setup_logging('main')
 
 from src.config import get_config
 from src.utils.logger import get_logger, setup_logger_from_config
-from src.core.camera import Camera, create_camera_from_config
+from src.core.camera import create_camera_from_config
 from src.core.cat_detector import CatDetector
 from src.core.object_tracker import ObjectTracker
 from src.core.behavior_analyzer import BehaviorAnalyzer, ROI, MultiROI
@@ -74,6 +74,12 @@ class LitterMonitorSystem:
         self.running = False
         self.frame_count = 0
 
+        # FPS 测量
+        self._last_frame_time = None
+        self._actual_fps = 10.0  # initial estimate, will be updated
+        self._fps_samples = []
+        self._fps_sample_count = 30  # average over 30 frames
+
         # 状态文件（用于与 manager 通信）
         self.state_file = project_root / 'data' / 'manager_state.json'
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -88,8 +94,7 @@ class LitterMonitorSystem:
         """
         # 初始化摄像头
         self.camera = create_camera_from_config(self.config.config)
-        camera_type = self.config.config.get('camera', {}).get('type', 'usb')
-        self.logger.info(f"摄像头初始化完成: {camera_type}")
+        self.logger.info("摄像头初始化完成: go2rtc")
 
         # 初始化猫检测器
         detection_config = self.config.get_detection_config()
@@ -279,6 +284,17 @@ class LitterMonitorSystem:
 
                     consecutive_failures = 0  # 重置失败计数
                     self.frame_count += 1
+
+                    # Measure actual FPS
+                    current_time = time.time()
+                    if self._last_frame_time is not None:
+                        frame_interval = current_time - self._last_frame_time
+                        if frame_interval > 0:
+                            self._fps_samples.append(1.0 / frame_interval)
+                            if len(self._fps_samples) > self._fps_sample_count:
+                                self._fps_samples.pop(0)
+                                self._actual_fps = sum(self._fps_samples) / len(self._fps_samples)
+                    self._last_frame_time = current_time
                     # 更新管理器状态（正常运行）
                     if self.frame_count % 10 == 0:  # 每10帧更新一次，减少IO
                         self._update_manager_state(consecutive_failures, 'running')
@@ -332,7 +348,7 @@ class LitterMonitorSystem:
         tracks = self.tracker.update(detections)
 
         # 行为分析
-        fps = self.config.get_camera_config().get('fps', 30)
+        fps = self._actual_fps
         completed_events = self.analyzer.update(tracks, fps)
 
         # 拍照管理：检查每个ROI区域是否需要拍照
