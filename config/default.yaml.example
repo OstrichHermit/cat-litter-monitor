@@ -6,23 +6,13 @@ behavior:
   min_duration: 5        # 最短停留时间（秒），低于此时间不计入有效记录
   min_interval: 30       # 最短记录间隔（秒），同一只猫的两次记录最小间隔
 
-# 摄像头配置
+# 摄像头配置（通过 go2rtc 获取视频流，OpenCV 直接读取）
 camera:
   buffer_size: 1         # 缓冲帧数
-  device_id: 0           # USB 摄像头设备 ID（仅 type=usb 时使用）
-  fps: 10                # 采集帧率
-  height: 360            # 分辨率高度
-  rtsp_url: ''           # RTSP 流地址（仅 type=rtsp 时使用）
-  type: go2rtc           # 摄像头类型: usb / rtsp / go2rtc
-  width: 640             # 分辨率宽度
 
 # 数据库配置
 database:
   path: data/litter_monitor.db
-  tables:
-    events: litter_events
-    statistics: daily_statistics
-  type: sqlite
 
 # 检测配置
 detection:
@@ -34,25 +24,19 @@ detection:
   target_class: 15             # COCO 类别 ID（15=cat）
   use_gpu: true                # 使用 GPU 加速
 
-# Go2rtc 配置（摄像头类型为 go2rtc 时需要）
+# Go2rtc 配置（视频流中转服务）
 go2rtc:
   api_port: 1984               # Go2rtc API 端口
   camera_name: my_camera       # 摄像头名称（需与 go2rtc.yaml 中配置一致）
-  decoder: auto                # 解码器: auto / software / nvidia
-  executable_path: go2rtc      # Go2rtc 可执行文件路径（Windows: go2rtc.exe）
-  ffmpeg_path: ffmpeg          # FFmpeg 可执行文件路径（可选，use_ffmpeg=true 时需要）
   host: localhost              # Go2rtc 主机地址
   rtsp_port: 8554              # RTSP 端口
-  use_ffmpeg: false            # 是否使用 FFmpeg 转码
   use_webrtc: false            # 是否启用 WebRTC
-  webrtc_port: 8888            # WebRTC 端口
 
 # 日志配置
 logging:
   backup_count: 5              # 日志备份数量
   console: true                # 是否输出到控制台
   file: logs/litter_monitor.log
-  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
   level: INFO
   max_bytes: 10                # 单个日志文件最大大小（MB）
 
@@ -96,25 +80,17 @@ roi:
 
 # 系统配置
 system:
-  num_threads: 4               # 处理线程数
   process_every_n_frames: 1    # 每N帧处理一次（1=每帧都处理）
-  show_debug_window: true      # 是否显示调试窗口（需要桌面环境）
-  temp_dir: data/temp          # 临时文件目录
 
 # 目标追踪配置
 tracking:
   max_disappeared: 60          # 目标消失多少帧后删除追踪
   max_distance: 0.2            # 最大追踪距离（归一化）
-  max_iou_distance: 0.7        # 最大 IOU 距离
   max_tracks: 4                # 最大同时追踪目标数
-  min_box_area: 50             # 最小检测框面积（像素）
   min_confidence: 0.1          # 最小追踪置信度
-  nms_max_overlap: 1.0         # NMS 最大重叠率
 
 # Web 界面配置
 web:
   debug: false                 # 调试模式
   host: 0.0.0.0                # 监听地址（0.0.0.0 = 所有网络接口）
   port: 5000                   # 监听端口
-  stats_refresh_interval: 60   # 统计数据刷新间隔（秒）
-  stream_interval: 100         # 视频流推送间隔（毫秒）
