@@ -144,16 +144,16 @@ class Database:
         Args:
             cursor: 数据库游标
         """
-        default_cats = [
-            ('猪猪', '棕色虎斑'),
-            ('汪三', '黑色')
-        ]
+        # 从配置读取猫咪列表
+        from src.config import get_config
+        config = get_config()
+        cat_names = config.get_cat_names()
 
-        for cat_name, cat_color in default_cats:
+        for cat_name in cat_names:
             try:
                 cursor.execute(
                     "INSERT INTO cats (name, color) VALUES (?, ?)",
-                    (cat_name, cat_color)
+                    (cat_name, None)
                 )
             except sqlite3.IntegrityError:
                 # 猫咪已存在，跳过

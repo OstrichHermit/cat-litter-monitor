@@ -28,6 +28,7 @@ from src.storage.photo_manager import PhotoManager
 from src.config import get_config
 import logging
 
+
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -59,6 +60,13 @@ class LitterMonitorMCPServer:
 
         logger.info("MCP服务器初始化完成")
 
+    def get_valid_cat_names(self) -> set:
+        """获取有效的猫咪名字集合"""
+        try:
+            return set(self.config.get_cat_names())
+        except Exception:
+            return {'小巫', '猪猪', '汪三', '猪妞'}
+
     def add_litter_records(self, records: list) -> dict:
         """
         批量添加猫砂盆使用记录
@@ -74,8 +82,8 @@ class LitterMonitorMCPServer:
         Returns:
             操作结果字典
         """
-        # 固定的猫咪名字
-        VALID_CAT_NAMES = {'小巫', '猪猪', '汪三', '猪妞'}
+        # 从配置读取猫咪名字
+        VALID_CAT_NAMES = self.get_valid_cat_names()
 
         try:
             logger.info(f"收到 {len(records)} 条记录添加请求")
@@ -94,7 +102,7 @@ class LitterMonitorMCPServer:
                 if cat_name not in VALID_CAT_NAMES:
                     return {
                         'success': False,
-                        'error': f'记录 {i+1} 的猫咪名字无效: "{cat_name}"。必须是: 小巫、猪猪、汪三、猪妞'
+                        'error': f'记录 {i+1} 的猫咪名字无效: "{cat_name}"。必须是: {", ".join(sorted(VALID_CAT_NAMES))}'
                     }
 
             # 统计每张照片被引用的次数
@@ -427,13 +435,15 @@ def main():
         mcp_server = Server("cat-litter-monitor")
 
         # 注册工具
+        _valid_cat_names = server.get_valid_cat_names()
+
         @mcp_server.list_tools()
         async def list_tools() -> list[Tool]:
             """列出可用工具"""
             return [
                 Tool(
                     name="add_litter_records",
-                    description="批量添加猫砂盆使用记录。猫咪名字只能是：小巫、猪猪、汪三、猪妞",
+                    description="批量添加猫砂盆使用记录。猫咪名字只能是：" + "、".join(sorted(_valid_cat_names)),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -444,7 +454,7 @@ def main():
                                     "properties": {
                                         "cat_name": {
                                             "type": "string",
-                                            "enum": ["小巫", "猪猪", "汪三", "猪妞"],
+                                            "enum": list(_valid_cat_names),
                                             "description": "猫咪名字（必须是四只猫之一）"
                                         },
                                         "date": {
