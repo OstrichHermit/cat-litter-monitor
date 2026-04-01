@@ -19,6 +19,10 @@ sys.path.insert(0, str(project_root))
 from src.core.camera import Go2RTCConfig, Go2RTCCamera
 from src.config import get_config
 
+# 窗口最大尺寸限制
+MAX_DISPLAY_WIDTH = 1280
+MAX_DISPLAY_HEIGHT = 720
+
 
 class SingleROI:
     """单个ROI区域的数据结构"""
@@ -46,6 +50,7 @@ class ROIAnnotatorGo2RTC:
         self.rois: List[SingleROI] = []
         self.current_roi_index = 0
         self.drawing = False
+        self.display_scale = 1.0  # 显示缩放比例
 
         # 加载配置
         self.config = get_config()
@@ -181,40 +186,68 @@ class ROIAnnotatorGo2RTC:
 
         print("开始标注...")
 
-        # 创建窗口
-        cv2.namedWindow('ROI Annotation')
+        # 计算缩放比例
+        h, w = frame.shape[:2]
+        self.display_scale = 1.0
+        if w > MAX_DISPLAY_WIDTH or h > MAX_DISPLAY_HEIGHT:
+            self.display_scale = min(MAX_DISPLAY_WIDTH / w, MAX_DISPLAY_HEIGHT / h)
+            display_w = int(w * self.display_scale)
+            display_h = int(h * self.display_scale)
+        else:
+            display_w, display_h = w, h
+
+        # 创建窗口并设置大小
+        # WINDOW_NORMAL 模式允许调整窗口大小，WINDOW_AUTOSIZE 会自动适应图像大小
+        cv2.namedWindow('ROI Annotation', cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('ROI Annotation', display_w, display_h)
+        print(f"显示窗口大小: {display_w}x{display_h}（原始 {w}x{h}，缩放比例 {self.display_scale:.2f}）")
+
         cv2.setMouseCallback('ROI Annotation', self.mouse_callback)
 
         display_frame = frame.copy()
 
         while True:
-            # 绘制所有ROI
-            temp_frame = display_frame.copy()
-            self.draw_all_rois(temp_frame)
+            # 如果需要缩放，先创建缩放后的显示帧
+            if self.display_scale < 1.0:
+                temp_frame = cv2.resize(display_frame, (display_w, display_h))
+                scale = self.display_scale
+            else:
+                temp_frame = display_frame.copy()
+                scale = 1.0
+
+            # 绘制所有ROI（坐标已缩放）
+            self.draw_all_rois(temp_frame, scale)
 
             # 绘制当前正在编辑的ROI
             if self.current_roi_index < len(self.rois):
                 current_roi = self.rois[self.current_roi_index]
-                self.draw_current_roi(temp_frame, current_roi)
+                self.draw_current_roi(temp_frame, current_roi, scale)
+
+            # 根据缩放比例调整文字大小
+            font_scale = 0.8 * scale if scale < 1.0 else 0.8
+            text_thickness = max(1, int(2 * scale)) if scale < 1.0 else 2
 
             # 显示当前ROI信息
             roi_info = f"Current: ROI {self.current_roi_index + 1}/{len(self.rois)}"
             cv2.putText(temp_frame, roi_info, (10, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), text_thickness)
 
             # 显示当前模式
             current_roi = self.rois[self.current_roi_index]
             mode_text = f"Mode: {current_roi.type} | Points: {len(current_roi.points)}"
-            cv2.putText(temp_frame, mode_text, (10, 60),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(temp_frame, mode_text, (10, int(60 * scale)),
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.9, (0, 255, 0), text_thickness)
 
             # 显示提示
             help_text = "Press 'n' for new ROI, 's' to save, 'q' to quit"
-            cv2.putText(temp_frame, help_text, (10, 90),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            cv2.putText(temp_frame, help_text, (10, int(90 * scale)),
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.75, (0, 255, 0), text_thickness)
 
-            # 显示帧
+            # 显示帧（确保窗口大小始终正确）
             cv2.imshow('ROI Annotation', temp_frame)
+            # 重新设置窗口大小，防止窗口关闭后重新打开时变大
+            if display_w > 0 and display_h > 0:
+                cv2.resizeWindow('ROI Annotation', display_w, display_h)
 
             # 处理按键
             key = cv2.waitKey(1) & 0xFF
@@ -279,45 +312,50 @@ class ROIAnnotatorGo2RTC:
         current_roi = self.rois[self.current_roi_index]
 
         if event == cv2.EVENT_LBUTTONDOWN:
+            # 将窗口坐标转换为原始帧坐标
+            orig_x = int(x / self.display_scale)
+            orig_y = int(y / self.display_scale)
             if current_roi.type == 'rectangle':
                 # 矩形模式：记录两个点
                 if len(current_roi.points) >= 2:
                     current_roi.points = []
-                current_roi.points.append([x, y])
-                print(f"ROI {current_roi.id}: 添加点 ({x}, {y})")
+                current_roi.points.append([orig_x, orig_y])
+                print(f"ROI {current_roi.id}: 添加点 ({orig_x}, {orig_y})")
             else:
                 # 多边形模式：记录顶点
-                current_roi.points.append([x, y])
-                print(f"ROI {current_roi.id}: 添加顶点 ({x}, {y})")
+                current_roi.points.append([orig_x, orig_y])
+                print(f"ROI {current_roi.id}: 添加顶点 ({orig_x}, {orig_y})")
 
         elif event == cv2.EVENT_RBUTTONDOWN:
             if current_roi.type == 'polygon':
                 # 完成多边形
                 pass
 
-    def draw_current_roi(self, frame: np.ndarray, roi: SingleROI):
+    def draw_current_roi(self, frame: np.ndarray, roi: SingleROI, scale: float = 1.0):
         """绘制当前正在编辑的ROI"""
         if roi.type == 'rectangle' and len(roi.points) >= 1:
-            # 绘制矩形预览
-            pt = tuple(roi.points[0])
-            cv2.circle(frame, pt, 5, (0, 255, 255), -1)
+            # 绘制矩形预览（坐标已缩放）
+            pt = tuple([int(p * scale) for p in roi.points[0]])
+            cv2.circle(frame, pt, max(3, int(5 * scale)), (0, 255, 255), -1)
             if len(roi.points) >= 2:
-                pt2 = tuple(roi.points[1])
-                cv2.rectangle(frame, pt, pt2, (0, 255, 255), 2)
+                pt2 = tuple([int(p * scale) for p in roi.points[1]])
+                cv2.rectangle(frame, pt, pt2, (0, 255, 255), max(1, int(2 * scale)))
 
         elif roi.type == 'polygon' and len(roi.points) >= 1:
-            # 绘制多边形预览
+            # 绘制多边形预览（坐标已缩放）
             for i, point in enumerate(roi.points):
-                pt = tuple(point)
-                cv2.circle(frame, pt, 5, (0, 255, 255), -1)
+                pt = tuple([int(p * scale) for p in point])
+                cv2.circle(frame, pt, max(3, int(5 * scale)), (0, 255, 255), -1)
                 if i > 0:
-                    prev_pt = tuple(roi.points[i - 1])
-                    cv2.line(frame, prev_pt, pt, (0, 255, 255), 2)
+                    prev_pt = tuple([int(p * scale) for p in roi.points[i - 1]])
+                    cv2.line(frame, prev_pt, pt, (0, 255, 255), max(1, int(2 * scale)))
             if len(roi.points) >= 3:
                 # 闭合多边形
-                cv2.line(frame, tuple(roi.points[-1]), tuple(roi.points[0]), (0, 255, 255), 2)
+                last_pt = tuple([int(p * scale) for p in roi.points[-1]])
+                first_pt = tuple([int(p * scale) for p in roi.points[0]])
+                cv2.line(frame, last_pt, first_pt, (0, 255, 255), max(1, int(2 * scale)))
 
-    def draw_all_rois(self, frame: np.ndarray):
+    def draw_all_rois(self, frame: np.ndarray, scale: float = 1.0):
         """绘制所有已完成的ROI"""
         colors = [
             (0, 255, 0),    # 绿色
@@ -327,6 +365,9 @@ class ROIAnnotatorGo2RTC:
             (255, 0, 255),  # 品红色
         ]
 
+        line_thickness = max(1, int(2 * scale))
+        font_scale = 0.7 * scale if scale < 1.0 else 0.7
+
         for i, roi in enumerate(self.rois):
             # 跳过当前正在编辑的ROI
             if i == self.current_roi_index:
@@ -335,20 +376,20 @@ class ROIAnnotatorGo2RTC:
             color = colors[i % len(colors)]
 
             if roi.type == 'rectangle' and roi.rectangle:
-                x = roi.rectangle['x']
-                y = roi.rectangle['y']
-                w = roi.rectangle['width']
-                h = roi.rectangle['height']
-                cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-                cv2.putText(frame, f"ROI {roi.id}", (x, y - 10),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+                x = int(roi.rectangle['x'] * scale)
+                y = int(roi.rectangle['y'] * scale)
+                w = int(roi.rectangle['width'] * scale)
+                h = int(roi.rectangle['height'] * scale)
+                cv2.rectangle(frame, (x, y), (x + w, y + h), color, line_thickness)
+                cv2.putText(frame, f"ROI {roi.id}", (x, y - int(10 * scale)),
+                           cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, line_thickness)
 
             elif roi.type == 'polygon' and roi.polygon and len(roi.polygon) >= 3:
-                polygon = np.array(roi.polygon, dtype=np.int32)
-                cv2.polylines(frame, [polygon], True, color, 2)
-                center = np.mean(roi.polygon, axis=0).astype(int)
-                cv2.putText(frame, f"ROI {roi.id}", tuple(center),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+                polygon = np.array([[int(p * scale) for p in pt] for pt in roi.polygon], dtype=np.int32)
+                cv2.polylines(frame, [polygon], True, color, line_thickness)
+                center = np.mean([[p * scale for p in pt] for pt in roi.polygon], axis=0)
+                cv2.putText(frame, f"ROI {roi.id}", tuple(center.astype(int)),
+                           cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, line_thickness)
 
     def save_rois(self):
         """
