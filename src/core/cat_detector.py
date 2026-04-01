@@ -318,60 +318,6 @@ class CatDetector:
             f"({allocated/total*100:.1f}%)"
         )
 
-    def detect_with_features(
-        self,
-        frame: np.ndarray
-    ) -> Tuple[List[Detection], np.ndarray]:
-        """
-        检测猫并提取特征
-
-        Args:
-            frame: 输入帧
-
-        Returns:
-            (检测结果列表, 特征向量)
-        """
-        detections = self.detect(frame)
-        features = self._extract_features(frame, detections)
-        return detections, features
-
-    def _extract_features(
-        self,
-        frame: np.ndarray,
-        detections: List[Detection]
-    ) -> np.ndarray:
-        """
-        从检测结果中提取特征
-
-        Args:
-            frame: 输入帧
-            detections: 检测结果列表
-
-        Returns:
-            特征向量数组
-        """
-        features = []
-
-        for detection in detections:
-            # 获取边界框
-            x1, y1, x2, y2 = [int(coord) for coord in detection.bbox]
-
-            # 提取ROI
-            roi = frame[y1:y2, x1:x2]
-
-            if roi.size == 0:
-                features.append(np.zeros(128))
-                continue
-
-            # 调整大小
-            roi = cv2.resize(roi, (64, 64))
-
-            # 提取简单的特征（这里使用像素值，实际可以使用更复杂的特征）
-            feature = roi.flatten()
-            features.append(feature)
-
-        return np.array(features)
-
     def draw_detections(
         self,
         frame: np.ndarray,
