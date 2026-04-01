@@ -604,6 +604,14 @@ let monitorWSInitialized = false;
 // 初始化自动滚动状态
 monitorServices.forEach(s => monitorAutoScroll[s] = true);
 
+function initMonitorWS() {
+    if (!monitorWSInitialized) {
+        connectMonitorStatusWS();
+        monitorServices.forEach(s => connectMonitorLogWS(s));
+        monitorWSInitialized = true;
+    }
+}
+
 function toggleMonitorPanel() {
     const panel = document.getElementById('monitorPanel');
     const btn = document.getElementById('monitorToggle');
@@ -615,11 +623,6 @@ function toggleMonitorPanel() {
     } else {
         panel.classList.add('open');
         btn.classList.add('active');
-        if (!monitorWSInitialized) {
-            connectMonitorStatusWS();
-            monitorServices.forEach(s => connectMonitorLogWS(s));
-            monitorWSInitialized = true;
-        }
     }
 }
 
@@ -769,6 +772,9 @@ function scrollMonitorToBottom(service) {
 
 // 监听日志容器的滚动事件，判断是否自动滚动
 document.addEventListener('DOMContentLoaded', () => {
+    // 页面加载后自动建立监控 WebSocket 连接
+    initMonitorWS();
+
     monitorServices.forEach(service => {
         const container = document.getElementById(`monitor-log-${service}`);
         if (container) {
