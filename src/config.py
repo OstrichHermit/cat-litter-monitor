@@ -224,27 +224,11 @@ class Config:
         Returns:
             猫的名称列表
         """
-        return self.config.get('cats', [])
-
-    def get_cat_colors_config(self) -> Dict[str, Tuple[int, int, int]]:
-        """
-        获取猫的颜色配置
-
-        Returns:
-            猫名字到BGR颜色元组的映射字典
-        """
-        cat_colors = self.config.get('cat_colors', {})
-
-        # 转换为元组格式
-        color_dict = {}
-        for cat_name, color_list in cat_colors.items():
-            if isinstance(color_list, list) and len(color_list) == 3:
-                color_dict[cat_name] = tuple(color_list)
-            else:
-                # 默认颜色（蓝色）
-                color_dict[cat_name] = (255, 0, 0)
-
-        return color_dict
+        cats = self.config.get('cats', [])
+        # 支持两种格式：简单列表 ['小巫', '猪猪'] 或对象列表 [{name: '小巫'}, ...]
+        if cats and isinstance(cats[0], dict) and 'name' in cats[0]:
+            return [cat['name'] for cat in cats]
+        return cats
 
     def get_absolute_path(self, relative_path: str) -> str:
         """
