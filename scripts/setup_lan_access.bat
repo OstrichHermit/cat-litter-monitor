@@ -28,8 +28,21 @@ echo.
 echo 本机局域网IP地址：
 ipconfig | findstr "IPv4"
 echo.
+
+:: 动态获取本机局域网 IPv4 地址
+set "LOCAL_IP="
+for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do (
+    for /f "tokens=*" %%b in ("%%a") do set "LOCAL_IP=%%b"
+)
+:: 去掉 IP 前面的空格
+set "LOCAL_IP=%LOCAL_IP: =%"
+
 echo 访问地址：
-echo http://192.168.2.187:5000
+if defined LOCAL_IP (
+    echo http://%LOCAL_IP%:5000
+) else (
+    echo [WARNING] 未检测到局域网 IP 地址，请手动查看上方 ipconfig 输出
+)
 echo.
 echo 局域网内其他设备可以通过上述地址访问
 echo ========================================

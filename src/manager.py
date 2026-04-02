@@ -159,15 +159,22 @@ class ProcessManager:
             return False
 
     def start_mcp_server(self) -> bool:
-        """启动MCP服务器"""
+        """启动MCP服务器（从配置文件读取参数）"""
         try:
+            mcp_transport = self.config.get('mcp.transport', 'http')
+            mcp_host = self.config.get('mcp.host', '127.0.0.1')
+            mcp_port = self.config.get('mcp.port', 5001)
+
             mcp_script = project_root / 'src' / 'mcp' / 'server.py'
             subprocess.Popen(
-                [sys.executable, str(mcp_script), '--transport', 'http', '--host', '127.0.0.1', '--port', '5001'],
+                [sys.executable, str(mcp_script),
+                 '--transport', str(mcp_transport),
+                 '--host', str(mcp_host),
+                 '--port', str(mcp_port)],
                 cwd=str(project_root),
                 creation_flags=subprocess.CREATE_NO_WINDOW
             )
-            self.logger.info("MCP 服务器已启动")
+            self.logger.info(f"MCP 服务器已启动 (transport={mcp_transport}, host={mcp_host}, port={mcp_port})")
             return True
         except Exception as e:
             self.logger.error(f"启动MCP服务器失败: {e}")

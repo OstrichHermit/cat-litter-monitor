@@ -376,6 +376,17 @@ class LitterMonitorMCPServer:
         try:
             import re
 
+            # 安全检查：确保路径不包含路径穿越
+            photo_config = self.config.get_photo_config()
+            photo_base_dir = self.config.get_absolute_path(photo_config.get('photo_base_dir', 'photo'))
+            full_path_resolved = Path(photo_path).resolve()
+            photo_dir_resolved = Path(photo_base_dir).resolve()
+            if not str(full_path_resolved).startswith(str(photo_dir_resolved)):
+                return {
+                    'success': False,
+                    'error': 'Invalid path: path traversal detected'
+                }
+
             # 从路径中提取日期 (YYYY-MM-DD)
             match = re.search(r'(\d{4}-\d{2}-\d{2})', photo_path)
             if not match:
@@ -646,23 +657,35 @@ def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 5001
 
 
 if __name__ == '__main__':
+    # 从配置文件读取 MCP 默认值
+    try:
+        _cfg = get_config()
+        _default_transport = _cfg.get('mcp.transport', 'http')
+        _default_host = _cfg.get('mcp.host', '127.0.0.1')
+        _default_port = int(_cfg.get('mcp.port', 5001))
+    except Exception:
+        # 配置文件不存在时使用内置默认值
+        _default_transport = 'http'
+        _default_host = '127.0.0.1'
+        _default_port = 5001
+
     parser = argparse.ArgumentParser(description='猫厕所监控系统MCP服务器')
     parser.add_argument(
         '--transport',
         choices=['stdio', 'http'],
-        default='stdio',
-        help='传输模式：stdio (默认) 或 http'
+        default=_default_transport,
+        help=f'传输模式：stdio 或 http (默认: {_default_transport})'
     )
     parser.add_argument(
         '--host',
-        default='0.0.0.0',
-        help='HTTP模式的监听地址，默认 0.0.0.0'
+        default=_default_host,
+        help=f'HTTP模式的监听地址 (默认: {_default_host})'
     )
     parser.add_argument(
         '--port',
         type=int,
-        default=5001,
-        help='HTTP模式的监听端口，默认 5001'
+        default=_default_port,
+        help=f'HTTP模式的监听端口 (默认: {_default_port})'
     )
     parser.add_argument(
         '--config',

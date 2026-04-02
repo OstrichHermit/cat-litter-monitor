@@ -23,6 +23,8 @@ detection:
 go2rtc:
   api_port: 1984               # Go2rtc API 端口
   camera_name: my_camera       # 摄像头名称（需与 go2rtc.yaml 中配置一致）
+  config_path: ../go2rtc/go2rtc.yaml   # go2rtc 配置文件路径（相对于项目根目录）
+  exe_path: ../go2rtc/go2rtc.exe       # go2rtc 可执行文件路径（相对于项目根目录）
   host: localhost              # Go2rtc 主机地址
   rtsp_port: 8554              # RTSP 端口
 
@@ -68,6 +70,12 @@ tracking:
   max_distance: 0.2            # 最大追踪距离（归一化）
   max_tracks: 4                # 最大同时追踪目标数
   min_confidence: 0.1          # 最小追踪置信度
+
+# MCP 服务器配置
+mcp:
+  host: 127.0.0.1              # MCP 监听地址
+  port: 5001                   # MCP 监听端口
+  transport: http              # 传输模式（http / stdio）
 
 # Web 界面配置
 web:
