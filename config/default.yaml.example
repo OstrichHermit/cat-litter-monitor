@@ -15,7 +15,7 @@ detection:
   half: true                   # 使用 FP16 半精度推理（需要 GPU 支持）
   input_size: 320              # 模型输入尺寸
   iou_threshold: 0.6           # NMS IOU 阈值
-  model_path: data/models/yolo_cat.pt   # YOLO 模型路径（需自行准备）
+  model_path: data/models/yolo26x.pt   # YOLO 模型路径（需自行准备）
   target_class: 15             # COCO 类别 ID（15=cat）
   use_gpu: true                # 使用 GPU 加速
 
@@ -83,9 +83,9 @@ web:
   host: 0.0.0.0                # 监听地址（0.0.0.0 = 所有网络接口）
   port: 5000                   # 监听端口
 
-# 猫咪名字配置（必须与猫咪识别系统中的名字一致）
+# 猫咪名字配置
 cats:
-  - name: 小巫
-  - name: 猪猪
-  - name: 汪三
-  - name: 猪妞
+  - name: 猫咪1
+  - name: 猫咪2
+  - name: 猫咪3
+  - name: 猫咪4
