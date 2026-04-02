@@ -26,9 +26,19 @@ from src.storage.database import Database
 from src.storage.photo_manager import PhotoManager
 from src.config import get_config
 
-# 配置日志
-logging.basicConfig(level=logging.INFO)
+# 配置日志（简洁格式，不带级别前缀）
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(message)s',
+    force=True
+)
 logger = logging.getLogger(__name__)
+
+# 统一 FastMCP / Uvicorn 等第三方库的日志格式
+for _log_name in ('fastmcp', 'uvicorn', 'uvicorn.error', 'uvicorn.access', 'mcp'):
+    _l = logging.getLogger(_log_name)
+    _l.handlers.clear()
+    _l.propagate = True
 
 
 # FastMCP 实例
