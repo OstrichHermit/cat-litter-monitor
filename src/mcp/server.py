@@ -35,10 +35,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # 统一 FastMCP / Uvicorn 等第三方库的日志格式
-for _log_name in ('fastmcp', 'uvicorn', 'uvicorn.error', 'uvicorn.access', 'mcp'):
+for _log_name in ('fastmcp', 'uvicorn', 'uvicorn.error', 'mcp'):
     _l = logging.getLogger(_log_name)
     _l.handlers.clear()
     _l.propagate = True
+
+# 关闭 Uvicorn 访问日志（MCP 服务不需要记录每次请求）
+logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
 
 
 # FastMCP 实例
