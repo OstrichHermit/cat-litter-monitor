@@ -151,7 +151,7 @@ class ProcessManager:
                  "(name='python.exe' or name='pythonw.exe') and commandline like '%cat-litter-monitor%mcp%server%'",
                  'get', 'ProcessId', '/format:csv'],
                 capture_output=True, text=True, encoding='utf-8',
-                creation_flags=subprocess.CREATE_NO_WINDOW
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
             return bool(result.stdout.strip().split('\n')[-1].strip())
         except Exception as e:
@@ -172,7 +172,7 @@ class ProcessManager:
                  '--host', str(mcp_host),
                  '--port', str(mcp_port)],
                 cwd=str(project_root),
-                creation_flags=subprocess.CREATE_NO_WINDOW
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
             self.logger.info(f"MCP 服务器已启动 (transport={mcp_transport}, host={mcp_host}, port={mcp_port})")
             return True

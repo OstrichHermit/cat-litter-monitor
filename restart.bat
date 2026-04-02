@@ -51,7 +51,7 @@ start "CatLitterMonitor-Main" /B pythonw "%~dp0src\main.py"
 timeout /t 2 /nobreak >nul
 
 echo [3/3] Starting MCP Server...
-start "CatLitterMonitor-MCP" /B pythonw "%~dp0src\mcp\server.py" --transport http --host 127.0.0.1 --port 5001
+start "CatLitterMonitor-MCP" /B pythonw "%~dp0src\mcp\server.py"
 
 echo.
 echo ========================================

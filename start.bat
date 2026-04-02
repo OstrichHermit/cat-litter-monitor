@@ -68,7 +68,7 @@ if errorlevel 1 (
 echo [OK] manager started
 
 echo [%time%] Starting MCP Server...
-start "%PROCESS_PREFIX%-MCP" /B pythonw "%~dp0src\mcp\server.py" --transport http --host 127.0.0.1 --port 5001
+start "%PROCESS_PREFIX%-MCP" /B pythonw "%~dp0src\mcp\server.py"
 if errorlevel 1 (
     echo [ERROR] MCP Server failed to start
     pause

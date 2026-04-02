@@ -4,6 +4,8 @@
 
 An intelligent cat litter box monitoring system based on YOLO object detection. Detects cat entry/exit behaviors in real-time via IP camera, automatically captures photos, and provides data query and management through a Web interface and MCP server.
 
+[English](README_EN.md) | [简体中文](README.md)
+
 ---
 
 ## ✨ 核心功能
