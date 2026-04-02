@@ -10,6 +10,12 @@ echo.
 
 cd /d "%~dp0"
 
+:: ===== go2rtc 路径配置（可按需修改）=====
+:: 默认值：go2rtc 位于项目同级目录下
+set "GO2RTC_PATH=%~dp0..\go2rtc\go2rtc.exe"
+set "GO2RTC_CONFIG=%~dp0..\go2rtc\go2rtc.yaml"
+:: =========================================
+
 echo [%time%] Stopping business processes...
 
 echo [1/3] Stopping Main...
@@ -31,7 +37,11 @@ echo.
 echo [%time%] Starting business services...
 
 echo [1/3] Starting go2rtc...
-powershell -Command "Start-Process cmd.exe -ArgumentList '/c D:\AgentWorkspace\go2rtc\go2rtc.exe -c D:\AgentWorkspace\go2rtc\go2rtc.yaml >> %CD%\logs\go2rtc.log 2>&1' -WindowStyle Hidden"
+if not exist "%GO2RTC_PATH%" (
+    echo [ERROR] go2rtc not found: %GO2RTC_PATH%
+    echo         Please modify GO2RTC_PATH in this script or copy go2rtc to the correct location.
+)
+powershell -Command "Start-Process cmd.exe -ArgumentList '/c %GO2RTC_PATH% -c %GO2RTC_CONFIG% >> %CD%\logs\go2rtc.log 2>&1' -WindowStyle Hidden"
 
 timeout /t 3 /nobreak >nul
 

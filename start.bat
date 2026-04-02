@@ -10,6 +10,12 @@ echo.
 
 cd /d "%~dp0"
 
+:: ===== go2rtc 路径配置（可按需修改）=====
+:: 默认值：go2rtc 位于项目同级目录下
+set "GO2RTC_PATH=%~dp0..\go2rtc\go2rtc.exe"
+set "GO2RTC_CONFIG=%~dp0..\go2rtc\go2rtc.yaml"
+:: =========================================
+
 set PROCESS_PREFIX=CatLitterMonitor
 
 if not exist "logs" mkdir logs
@@ -20,7 +26,16 @@ echo. > logs\manager.log
 echo. > logs\mcp.log
 
 echo [%time%] Starting go2rtc...
-powershell -Command "Start-Process cmd.exe -ArgumentList '/c D:\AgentWorkspace\go2rtc\go2rtc.exe -c D:\AgentWorkspace\go2rtc\go2rtc.yaml >> %CD%\logs\go2rtc.log 2>&1' -WindowStyle Hidden"
+if not exist "%GO2RTC_PATH%" (
+    echo [ERROR] go2rtc not found: %GO2RTC_PATH%
+    echo         Please modify GO2RTC_PATH in this script or copy go2rtc to the correct location.
+    pause
+    exit /b 1
+)
+if not exist "%GO2RTC_CONFIG%" (
+    echo [WARNING] go2rtc config not found: %GO2RTC_CONFIG%
+)
+powershell -Command "Start-Process cmd.exe -ArgumentList '/c %GO2RTC_PATH% -c %GO2RTC_CONFIG% >> %CD%\logs\go2rtc.log 2>&1' -WindowStyle Hidden"
 if errorlevel 1 (
     echo [ERROR] go2rtc failed to start
     pause

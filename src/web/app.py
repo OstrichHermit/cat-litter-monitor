@@ -213,7 +213,7 @@ class WebApp:
         host: str = '0.0.0.0',
         port: int = 5000,
         debug: bool = False,
-        secret_key: str = 'litter-monitor-secret-key',
+        secret_key: str | None = None,
         database=None
     ):
         """
@@ -402,7 +402,18 @@ class WebApp:
 
                 # 转换为绝对路径
                 config = get_config()
+                photo_config = config.get_photo_config()
+                photo_base_dir = config.get_absolute_path(photo_config.get('photo_base_dir', 'photo'))
                 abs_photo_path = config.get_absolute_path(photo_path)
+
+                # 安全检查：确保路径不包含路径穿越
+                full_path_resolved = Path(abs_photo_path).resolve()
+                photo_dir_resolved = Path(photo_base_dir).resolve()
+                if not str(full_path_resolved).startswith(str(photo_dir_resolved)):
+                    return JSONResponse({
+                        'success': False,
+                        'error': 'Invalid path'
+                    }, status_code=400)
 
                 # 从路径中提取日期部分
                 parts = photo_path.split('/')
@@ -415,9 +426,7 @@ class WebApp:
                     }, status_code=400)
 
                 # 使用 PhotoManager 移动照片
-                photo_config = config.get_photo_config()
-                photo_base_dir = photo_config.get('photo_base_dir', 'photo')
-                photo_manager = PhotoManager(photo_base_dir)
+                photo_manager = PhotoManager(photo_config.get('photo_base_dir', 'photo'))
 
                 new_path = photo_manager.move_to_unidentifiable(abs_photo_path, date_str)
 
@@ -631,7 +640,18 @@ class WebApp:
 
                 # 转换为绝对路径
                 config = get_config()
+                photo_config = config.get_photo_config()
+                photo_base_dir = config.get_absolute_path(photo_config.get('photo_base_dir', 'photo'))
                 abs_photo_path = config.get_absolute_path(photo_path)
+
+                # 安全检查：确保路径不包含路径穿越
+                full_path_resolved = Path(abs_photo_path).resolve()
+                photo_dir_resolved = Path(photo_base_dir).resolve()
+                if not str(full_path_resolved).startswith(str(photo_dir_resolved)):
+                    return JSONResponse({
+                        'success': False,
+                        'error': 'Invalid path'
+                    }, status_code=400)
 
                 if os.path.exists(abs_photo_path):
                     os.remove(abs_photo_path)
@@ -675,7 +695,18 @@ class WebApp:
                     photo_rel_path = f'photo/{photo_rel_path}'
 
                 config = get_config()
+                photo_config = config.get_photo_config()
+                photo_base_dir = config.get_absolute_path(photo_config.get('photo_base_dir', 'photo'))
                 abs_photo_path = config.get_absolute_path(photo_rel_path)
+
+                # 安全检查：确保路径不包含路径穿越
+                full_path_resolved = Path(abs_photo_path).resolve()
+                photo_dir_resolved = Path(photo_base_dir).resolve()
+                if not str(full_path_resolved).startswith(str(photo_dir_resolved)):
+                    return JSONResponse({
+                        'success': False,
+                        'error': 'Invalid path'
+                    }, status_code=400)
 
                 if not os.path.exists(abs_photo_path):
                     return JSONResponse({
@@ -700,9 +731,7 @@ class WebApp:
                     record_time = dt.strftime('%H:%M:%S')
 
                 # 使用PhotoManager移动照片
-                photo_config = config.get_photo_config()
-                photo_base_dir = photo_config.get('photo_base_dir', 'photo')
-                photo_manager = PhotoManager(photo_base_dir)
+                photo_manager = PhotoManager(photo_config.get('photo_base_dir', 'photo'))
 
                 # 从路径中提取日期部分
                 parts = photo_rel_path.split('/')
