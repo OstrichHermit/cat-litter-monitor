@@ -363,12 +363,12 @@ class LitterMonitorMCPServer:
                 'error': str(e)
             }
 
-    def mark_unidentifiable(self, photo_path: str) -> dict:
+    def mark_unidentifiable(self, photo_paths: list) -> dict:
         """
-        将无法识别的照片标记为无法识别，移动到 Unidentifiable 文件夹
+        将无法识别的照片标记为无法识别，移动到 Unidentifiable 文件夹（批量）
 
         Args:
-            photo_path: 照片路径
+            photo_paths: 照片路径列表
 
         Returns:
             操作结果字典
@@ -376,40 +376,65 @@ class LitterMonitorMCPServer:
         try:
             import re
 
-            # 安全检查：确保路径不包含路径穿越
             photo_config = self.config.get_photo_config()
             photo_base_dir = self.config.get_absolute_path(photo_config.get('photo_base_dir', 'photo'))
-            full_path_resolved = Path(photo_path).resolve()
             photo_dir_resolved = Path(photo_base_dir).resolve()
-            if not str(full_path_resolved).startswith(str(photo_dir_resolved)):
-                return {
-                    'success': False,
-                    'error': 'Invalid path: path traversal detected'
-                }
 
-            # 从路径中提取日期 (YYYY-MM-DD)
-            match = re.search(r'(\d{4}-\d{2}-\d{2})', photo_path)
-            if not match:
-                return {
-                    'success': False,
-                    'error': f'无法从路径中提取日期: {photo_path}'
-                }
+            results = []
+            success_count = 0
+            fail_count = 0
 
-            date_str = match.group(1)
+            for photo_path in photo_paths:
+                # 安全检查：确保路径不包含路径穿越
+                full_path_resolved = Path(photo_path).resolve()
+                if not str(full_path_resolved).startswith(str(photo_dir_resolved)):
+                    results.append({
+                        'photo_path': photo_path,
+                        'success': False,
+                        'error': 'Invalid path: path traversal detected'
+                    })
+                    fail_count += 1
+                    continue
 
-            new_path = self.photo_manager.move_to_unidentifiable(photo_path, date_str)
+                # 从路径中提取日期 (YYYY-MM-DD)
+                match = re.search(r'(\d{4}-\d{2}-\d{2})', photo_path)
+                if not match:
+                    results.append({
+                        'photo_path': photo_path,
+                        'success': False,
+                        'error': f'无法从路径中提取日期'
+                    })
+                    fail_count += 1
+                    continue
 
-            if new_path:
-                return {
-                    'success': True,
-                    'new_path': new_path,
-                    'message': '已标记为无法识别'
-                }
-            else:
-                return {
-                    'success': False,
-                    'error': '移动照片失败'
-                }
+                date_str = match.group(1)
+
+                new_path = self.photo_manager.move_to_unidentifiable(photo_path, date_str)
+
+                if new_path:
+                    results.append({
+                        'photo_path': photo_path,
+                        'success': True,
+                        'new_path': new_path
+                    })
+                    success_count += 1
+                else:
+                    results.append({
+                        'photo_path': photo_path,
+                        'success': False,
+                        'error': '移动照片失败'
+                    })
+                    fail_count += 1
+
+            logger.info(f"标记 {success_count} 张照片为无法识别，{fail_count} 张失败")
+
+            return {
+                'success': fail_count == 0,
+                'results': results,
+                'success_count': success_count,
+                'fail_count': fail_count,
+                'message': f'成功标记 {success_count} 张照片，{fail_count} 张失败'
+            }
 
         except Exception as e:
             logger.error(f"标记照片为无法识别失败: {e}")
@@ -576,30 +601,37 @@ async def get_unidentified_photos() -> str:
 
 
 @mcp.tool
-async def mark_unidentifiable(photo_path: str) -> str:
+async def mark_unidentifiable(photo_paths: list) -> str:
     """
-    将无法识别的照片标记为无法识别
+    将无法识别的照片标记为无法识别（批量）
 
-    将一张无法确认猫咪身份的照片移动到 Unidentifiable 文件夹，
+    将一张或多张无法确认猫咪身份的照片移动到 Unidentifiable 文件夹，
     避免重复识别浪费资源。
 
     Args:
-        photo_path: 照片路径（必需），待识别照片的相对或绝对路径
+        photo_paths: 照片路径列表，每项为待识别照片的相对或绝对路径
 
     Returns:
-        JSON 格式的操作结果，包含移动后的新路径
+        JSON 格式的操作结果，包含每张照片的处理结果
 
     Examples:
         # 标记一张照片为无法识别
-        mark_unidentifiable(photo_path="photo/unidentified/2025-01-15/photo_001.jpg")
+        mark_unidentifiable(photo_paths=["photo/unidentified/2025-01-15/photo_001.jpg"])
+
+        # 批量标记多张照片为无法识别
+        mark_unidentifiable(photo_paths=[
+            "photo/unidentified/2025-01-15/photo_001.jpg",
+            "photo/unidentified/2025-01-15/photo_002.jpg",
+            "photo/unidentified/2025-01-16/photo_003.jpg"
+        ])
 
     Note:
-        - 照片路径中必须包含日期信息 (YYYY-MM-DD 格式)
+        - 每张照片路径中必须包含日期信息 (YYYY-MM-DD 格式)
         - 标记后照片会被移动到 Unidentifiable 目录，不再出现在未识别列表中
         - 此操作不可逆，标记后的照片需要手动恢复
     """
     server = get_server()
-    result = server.mark_unidentifiable(photo_path=photo_path)
+    result = server.mark_unidentifiable(photo_paths=photo_paths)
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
