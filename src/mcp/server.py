@@ -35,10 +35,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # 统一 FastMCP / Uvicorn 等第三方库的日志格式
-for _log_name in ('fastmcp', 'uvicorn', 'uvicorn.error', 'mcp'):
+for _log_name in ('fastmcp', 'uvicorn', 'uvicorn.error', 'uvicorn.access', 'mcp'):
     _l = logging.getLogger(_log_name)
     _l.handlers.clear()
     _l.propagate = True
+
+# 关闭 Uvicorn 访问日志（MCP 服务不需要记录每次请求）
+logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
 
 
 # FastMCP 实例
@@ -622,9 +625,6 @@ def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 5001
     print("    5. mark_unidentifiable      - 标记照片为无法识别", file=sys.stderr)
     print("=" * 60, file=sys.stderr)
     print("", file=sys.stderr)
-
-    # 禁用 Uvicorn 访问日志（在启动前设置，Uvicorn 启动后会重建自己的 handler）
-    logging.getLogger('uvicorn.access').disabled = True
 
     # 根据传输模式运行服务器
     try:
