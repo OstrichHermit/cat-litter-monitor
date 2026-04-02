@@ -595,7 +595,7 @@ function closeLightbox() {
 // 服务监控面板
 // ============================================
 
-const monitorServices = ['main', 'manager', 'go2rtc'];
+const monitorServices = ['manager', 'mcp', 'main', 'go2rtc'];
 let monitorStatusWS = null;
 let monitorLogWS = {};
 let monitorAutoScroll = {};

@@ -143,6 +143,36 @@ class ProcessManager:
             self.logger.error(f"检查进程失败 ({process_name}): {e}")
             return False
 
+    def check_mcp_server_alive(self) -> bool:
+        """检查MCP服务器进程是否存活"""
+        try:
+            result = subprocess.run(
+                ['wmic', 'process', 'where',
+                 "(name='python.exe' or name='pythonw.exe') and commandline like '%cat-litter-monitor%mcp%server%'",
+                 'get', 'ProcessId', '/format:csv'],
+                capture_output=True, text=True, encoding='utf-8',
+                creation_flags=subprocess.CREATE_NO_WINDOW
+            )
+            return bool(result.stdout.strip().split('\n')[-1].strip())
+        except Exception as e:
+            self.logger.error(f"检查MCP服务器进程失败: {e}")
+            return False
+
+    def start_mcp_server(self) -> bool:
+        """启动MCP服务器"""
+        try:
+            mcp_script = project_root / 'src' / 'mcp' / 'server.py'
+            subprocess.Popen(
+                [sys.executable, str(mcp_script), '--transport', 'http', '--host', '127.0.0.1', '--port', '5001'],
+                cwd=str(project_root),
+                creation_flags=subprocess.CREATE_NO_WINDOW
+            )
+            self.logger.info("MCP 服务器已启动")
+            return True
+        except Exception as e:
+            self.logger.error(f"启动MCP服务器失败: {e}")
+            return False
+
     def should_restart(self) -> bool:
         """
         判断是否需要重启
@@ -234,6 +264,10 @@ class ProcessManager:
                         # 重启失败或冷却中，等待较短时间
                         time.sleep(self.check_interval)
                 else:
+                    # 检查 MCP 服务器进程是否存活
+                    if not self.check_mcp_server_alive():
+                        self.logger.warning("MCP 服务器进程未运行，尝试重启...")
+                        self.start_mcp_server()
                     # 正常状态，读取状态并记录
                     state = self.read_state()
                     failures = state.get('consecutive_failures', 0)

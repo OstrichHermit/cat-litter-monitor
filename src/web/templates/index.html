@@ -46,6 +46,16 @@
                                 <span class="monitor-status-text" id="monitor-status-manager">检查中</span>
                             </div>
                         </div>
+                        <div class="monitor-component-item" data-service="mcp">
+                            <div class="monitor-component-info">
+                                <span class="monitor-component-name">MCP</span>
+                                <span class="monitor-component-pid" id="monitor-pid-mcp">--</span>
+                            </div>
+                            <div class="monitor-component-status">
+                                <span class="monitor-status-dot" id="monitor-dot-mcp"></span>
+                                <span class="monitor-status-text" id="monitor-status-mcp">检查中</span>
+                            </div>
+                        </div>
                         <div class="monitor-component-item" data-service="main">
                             <div class="monitor-component-info">
                                 <span class="monitor-component-name">Main</span>
@@ -81,6 +91,17 @@
                                 </div>
                             </div>
                             <div class="monitor-log-content" id="monitor-log-manager"></div>
+                        </div>
+                        <div class="monitor-log-panel" data-service="mcp">
+                            <div class="monitor-log-header">
+                                <span class="monitor-status-dot" id="monitor-log-dot-mcp"></span>
+                                <span class="monitor-log-title">MCP</span>
+                                <div class="monitor-log-actions">
+                                    <button class="monitor-log-btn" onclick="clearMonitorLog('mcp')">清空</button>
+                                    <button class="monitor-log-btn" onclick="scrollMonitorToBottom('mcp')">底部</button>
+                                </div>
+                            </div>
+                            <div class="monitor-log-content" id="monitor-log-mcp"></div>
                         </div>
                         <div class="monitor-log-panel" data-service="main">
                             <div class="monitor-log-header">

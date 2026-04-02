@@ -2,36 +2,37 @@
 MCP服务器入口
 
 该模块提供MCP服务器的主要功能，用于管理猫厕所监控系统的外部接口。
+基于 FastMCP 框架，支持 stdio 和 HTTP 两种传输模式。
 """
 
 import sys
 from pathlib import Path
+from typing import Optional
 
 # 添加项目路径
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-try:
-    from mcp.server import Server
-    from mcp.types import Tool, TextContent
-    import mcp.server.stdio
-except ImportError:
-    # 如果没有安装mcp包，提供一个简单的替代实现
-    print("警告: MCP包未安装，请运行: pip install mcp")
-    print("将使用简化模式运行...")
-    Server = None
-    Tool = None
-    TextContent = None
+# 日志重定向（必须在其他 import 之前，捕获所有输出到 logs/mcp.log）
+from src.utils.log_writer import setup_logging
+setup_logging('mcp')
+
+import json
+import logging
+import argparse
+from fastmcp import FastMCP
 
 from src.storage.database import Database
 from src.storage.photo_manager import PhotoManager
 from src.config import get_config
-import logging
-
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+# FastMCP 实例
+mcp = FastMCP('cat-litter-monitor')
 
 
 class LitterMonitorMCPServer:
@@ -406,174 +407,265 @@ def get_server():
     return _server_instance
 
 
-def main():
-    """主函数"""
-    import argparse
+# ==================== MCP 工具注册 ====================
 
+@mcp.tool
+async def add_litter_records(records: list) -> str:
+    """
+    批量添加猫砂盆使用记录
+
+    将猫砂盆使用记录批量添加到数据库，并自动处理照片文件的移动和复制。
+    当同一张照片中有多只猫咪时，会为每只猫创建单独的记录。
+
+    Args:
+        records: 记录列表，每条记录包含：
+            - cat_name: 猫咪名称（必须是小巫、猪猪、汪三、猪妞之一）
+            - date: 日期 (YYYY-MM-DD)
+            - time: 时间 (HH:MM:SS)
+            - photo_path: 照片路径
+
+    Returns:
+        JSON 格式的操作结果，包含成功状态、记录ID列表和照片处理信息
+
+    Examples:
+        # 添加单条记录
+        add_litter_records(records=[{
+            "cat_name": "小巫",
+            "date": "2025-01-15",
+            "time": "08:30:00",
+            "photo_path": "photo/2025-01-15/photo_001.jpg"
+        }])
+
+        # 同一张照片有多只猫
+        add_litter_records(records=[
+            {"cat_name": "小巫", "date": "2025-01-15", "time": "08:30:00", "photo_path": "photo/2025-01-15/photo_001.jpg"},
+            {"cat_name": "猪猪", "date": "2025-01-15", "time": "08:30:00", "photo_path": "photo/2025-01-15/photo_001.jpg"}
+        ])
+
+    Note:
+        - 猫咪名字必须是系统配置中的有效名称
+        - 照片会被自动移动到对应猫咪的目录下
+        - 如果同一张照片引用多次，第一只猫移动原图，后续的猫使用副本
+    """
+    server = get_server()
+    result = server.add_litter_records(records)
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+@mcp.tool
+async def get_litter_records(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    cat_name: Optional[str] = None,
+    limit: int = 100
+) -> str:
+    """
+    获取猫砂盆使用记录
+
+    按条件查询猫砂盆使用记录，支持日期范围和猫咪名称过滤。
+
+    Args:
+        start_date: 开始日期 (YYYY-MM-DD)，可选
+        end_date: 结束日期 (YYYY-MM-DD)，可选
+        cat_name: 猫咪名称（可选），用于过滤特定猫咪的记录
+        limit: 返回数量限制，默认 100
+
+    Returns:
+        JSON 格式的查询结果，包含记录列表和总数
+
+    Examples:
+        # 获取所有记录（默认100条）
+        get_litter_records()
+
+        # 获取指定日期范围的记录
+        get_litter_records(start_date="2025-01-01", end_date="2025-01-31")
+
+        # 获取特定猫咪的记录
+        get_litter_records(cat_name="小巫", limit=50)
+
+    Note:
+        - 不传日期参数则不限制日期范围
+        - 不传猫咪名称则返回所有猫咪的记录
+        - 结果按时间倒序排列
+    """
+    server = get_server()
+    result = server.get_litter_records(
+        start_date=start_date,
+        end_date=end_date,
+        cat_name=cat_name,
+        limit=limit
+    )
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+@mcp.tool
+async def get_daily_statistics(record_date: Optional[str] = None) -> str:
+    """
+    获取每日统计数据
+
+    获取指定日期的猫砂盆使用统计数据，包括各猫咪的使用次数等信息。
+
+    Args:
+        record_date: 日期 (YYYY-MM-DD)，可选。如果不传则返回今天的统计
+
+    Returns:
+        JSON 格式的统计数据，包含各猫咪的使用次数等汇总信息
+
+    Examples:
+        # 获取今天的统计
+        get_daily_statistics()
+
+        # 获取指定日期的统计
+        get_daily_statistics(record_date="2025-01-15")
+
+    Note:
+        - 不传日期参数则默认返回今天的统计
+        - 统计数据通常由系统自动维护
+    """
+    server = get_server()
+    result = server.get_daily_statistics(record_date=record_date)
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+@mcp.tool
+async def get_unidentified_photos() -> str:
+    """
+    获取未识别的照片列表
+
+    获取待识别目录中所有尚未被识别（未关联到具体猫咪）的照片列表。
+    这些照片通常由监控摄像头自动拍摄，等待人工或AI识别。
+
+    Returns:
+        JSON 格式的照片列表，包含每张照片的路径和文件名
+
+    Examples:
+        # 获取所有未识别的照片
+        get_unidentified_photos()
+
+    Note:
+        - 返回的照片位于待识别目录中
+        - 可以配合 mark_unidentifiable 工具标记无法识别的照片
+    """
+    server = get_server()
+    result = server.get_unidentified_photos()
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+@mcp.tool
+async def mark_unidentifiable(photo_path: str) -> str:
+    """
+    将无法识别的照片标记为无法识别
+
+    将一张无法确认猫咪身份的照片移动到 Unidentifiable 文件夹，
+    避免重复识别浪费资源。
+
+    Args:
+        photo_path: 照片路径（必需），待识别照片的相对或绝对路径
+
+    Returns:
+        JSON 格式的操作结果，包含移动后的新路径
+
+    Examples:
+        # 标记一张照片为无法识别
+        mark_unidentifiable(photo_path="photo/unidentified/2025-01-15/photo_001.jpg")
+
+    Note:
+        - 照片路径中必须包含日期信息 (YYYY-MM-DD 格式)
+        - 标记后照片会被移动到 Unidentifiable 目录，不再出现在未识别列表中
+        - 此操作不可逆，标记后的照片需要手动恢复
+    """
+    server = get_server()
+    result = server.mark_unidentifiable(photo_path=photo_path)
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+# ==================== 启动入口 ====================
+
+def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 5001):
+    """
+    启动 MCP 服务器
+
+    Args:
+        transport: 传输模式，'stdio' 或 'http'
+        host: HTTP模式的监听地址，默认 0.0.0.0
+        port: HTTP模式的监听端口，默认 5001
+    """
+    # 日志输出到 stderr，避免污染 stdio 传输
+    print("", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    print("  Cat Litter Monitor MCP Server", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    print(f"  传输模式: {transport.upper()}", file=sys.stderr)
+
+    if transport == 'stdio':
+        print("  协议: MCP over stdio (标准输入输出)", file=sys.stderr)
+    elif transport == 'http':
+        print(f"  协议: MCP over HTTP", file=sys.stderr)
+        print(f"  服务器监听: {host}:{port}", file=sys.stderr)
+
+    print("", file=sys.stderr)
+    print("  已注册的工具:", file=sys.stderr)
+    print("    1. add_litter_records      - 批量添加猫砂盆使用记录", file=sys.stderr)
+    print("    2. get_litter_records       - 获取猫砂盆使用记录", file=sys.stderr)
+    print("    3. get_daily_statistics     - 获取每日统计数据", file=sys.stderr)
+    print("    4. get_unidentified_photos  - 获取未识别的照片列表", file=sys.stderr)
+    print("    5. mark_unidentifiable      - 标记照片为无法识别", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    print("", file=sys.stderr)
+
+    # 根据传输模式运行服务器
+    try:
+        if transport == 'stdio':
+            mcp.run(transport='stdio', show_banner=False)
+        elif transport == 'http':
+            mcp.run(
+                transport='http',
+                host=host,
+                port=port,
+                path='/mcp',
+                show_banner=False
+            )
+        else:
+            raise ValueError(f"不支持的传输模式: {transport}")
+    except Exception as e:
+        logger.error(f"MCP Server 运行时崩溃: {e}")
+        raise
+
+
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='猫厕所监控系统MCP服务器')
+    parser.add_argument(
+        '--transport',
+        choices=['stdio', 'http'],
+        default='stdio',
+        help='传输模式：stdio (默认) 或 http'
+    )
+    parser.add_argument(
+        '--host',
+        default='0.0.0.0',
+        help='HTTP模式的监听地址，默认 0.0.0.0'
+    )
+    parser.add_argument(
+        '--port',
+        type=int,
+        default=5001,
+        help='HTTP模式的监听端口，默认 5001'
+    )
     parser.add_argument(
         '--config',
         type=str,
         default=None,
         help='配置文件路径'
     )
-    parser.add_argument(
-        '--mode',
-        type=str,
-        default='stdio',
-        choices=['stdio', 'simple'],
-        help='运行模式'
-    )
 
     args = parser.parse_args()
 
-    # 创建服务器实例
-    server = LitterMonitorMCPServer()
-
-    if args.mode == 'stdio' and Server is not None:
-        # 使用标准MCP服务器
-        mcp_server = Server("cat-litter-monitor")
-
-        # 注册工具
-        _valid_cat_names = server.get_valid_cat_names()
-
-        @mcp_server.list_tools()
-        async def list_tools() -> list[Tool]:
-            """列出可用工具"""
-            return [
-                Tool(
-                    name="add_litter_records",
-                    description="批量添加猫砂盆使用记录。猫咪名字只能是：" + "、".join(sorted(_valid_cat_names)),
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "records": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "cat_name": {
-                                            "type": "string",
-                                            "enum": list(_valid_cat_names),
-                                            "description": "猫咪名字（必须是四只猫之一）"
-                                        },
-                                        "date": {
-                                            "type": "string",
-                                            "description": "日期 (YYYY-MM-DD)"
-                                        },
-                                        "time": {
-                                            "type": "string",
-                                            "description": "时间 (HH:MM:SS)"
-                                        },
-                                        "photo_path": {
-                                            "type": "string",
-                                            "description": "照片路径"
-                                        }
-                                    },
-                                    "required": ["cat_name", "date", "time", "photo_path"]
-                                }
-                            }
-                        },
-                        "required": ["records"]
-                    }
-                ),
-                Tool(
-                    name="get_litter_records",
-                    description="获取猫砂盆使用记录",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "start_date": {"type": "string"},
-                            "end_date": {"type": "string"},
-                            "cat_name": {"type": "string"}
-                        }
-                    }
-                ),
-                Tool(
-                    name="get_daily_statistics",
-                    description="获取每日统计",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "record_date": {"type": "string"}
-                        }
-                    }
-                ),
-                Tool(
-                    name="get_unidentified_photos",
-                    description="获取未识别的照片列表",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {}
-                    }
-                ),
-                Tool(
-                    name="mark_unidentifiable",
-                    description="将无法识别的照片标记为无法识别，移动到 Unidentifiable 文件夹",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "photo_path": {
-                                "type": "string",
-                                "description": "照片路径"
-                            }
-                        },
-                        "required": ["photo_path"]
-                    }
-                )
-            ]
-
-        @mcp_server.call_tool()
-        async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-            """调用工具"""
-            if name == "add_litter_records":
-                result = server.add_litter_records(arguments.get("records", []))
-            elif name == "get_litter_records":
-                result = server.get_litter_records(
-                    start_date=arguments.get("start_date"),
-                    end_date=arguments.get("end_date"),
-                    cat_name=arguments.get("cat_name"),
-                    limit=100
-                )
-            elif name == "get_daily_statistics":
-                result = server.get_daily_statistics(
-                    record_date=arguments.get("record_date")
-                )
-            elif name == "get_unidentified_photos":
-                result = server.get_unidentified_photos()
-            elif name == "mark_unidentifiable":
-                result = server.mark_unidentifiable(arguments.get("photo_path"))
-            else:
-                result = {"success": False, "error": f"未知工具: {name}"}
-
-            return [TextContent(type="text", text=str(result))]
-
-        # 运行服务器
-        async def run():
-            async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-                await mcp_server.run(
-                    read_stream,
-                    write_stream,
-                    mcp_server.create_initialization_options()
-                )
-
-        import asyncio
-        asyncio.run(run())
-
-    else:
-        # 简单模式（用于测试）
-        logger.info("运行在简单模式（仅用于测试）")
-        logger.info("可用方法:")
-        logger.info("  - add_litter_records(records)")
-        logger.info("  - get_litter_records(start_date, end_date, cat_name, limit)")
-        logger.info("  - get_daily_statistics(record_date)")
-        logger.info("  - get_unidentified_photos()")
-
-        # 保持运行
-        import time
-        while True:
-            time.sleep(1)
-
-
-if __name__ == '__main__':
-    main()
+    try:
+        run_server(
+            transport=args.transport,
+            host=args.host,
+            port=args.port
+        )
+    except Exception as e:
+        logger.error(f"MCP Server 启动失败: {e}")
+        sys.exit(1)
