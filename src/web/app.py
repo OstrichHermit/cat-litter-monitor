@@ -83,6 +83,7 @@ LOG_FILES = {
     "main": PROJECT_ROOT / "logs" / "main.log",
     "manager": PROJECT_ROOT / "logs" / "manager.log",
     "go2rtc": PROJECT_ROOT / "logs" / "go2rtc.log",
+    "mcp": PROJECT_ROOT / "logs" / "mcp.log",
 }
 
 # 进程缓存
@@ -128,6 +129,7 @@ def get_service_status(service: str) -> Dict:
         "main": "src\\main.py",
         "manager": "src\\manager.py",
         "go2rtc": "go2rtc.exe",
+        "mcp": "cat-litter-monitor\\src\\mcp\\server",
     }
 
     if service == "go2rtc":
@@ -857,7 +859,7 @@ class WebApp:
         @self.app.get("/api/services/status")
         async def get_services_status():
             """获取所有服务的运行状态"""
-            services = ["main", "manager", "go2rtc"]
+            services = ["main", "manager", "go2rtc", "mcp"]
             status = {}
             for service in services:
                 status[service] = get_service_status(service)
@@ -934,7 +936,7 @@ class WebApp:
             try:
                 await websocket.send_json({"type": "connected"})
                 while True:
-                    services = ["main", "manager", "go2rtc"]
+                    services = ["main", "manager", "go2rtc", "mcp"]
                     status = {}
                     for service in services:
                         status[service] = get_service_status(service)

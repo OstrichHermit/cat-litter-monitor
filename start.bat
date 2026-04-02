@@ -17,6 +17,7 @@ if not exist "logs" mkdir logs
 echo. > logs\go2rtc.log
 echo. > logs\main.log
 echo. > logs\manager.log
+echo. > logs\mcp.log
 
 echo [%time%] Starting go2rtc...
 powershell -Command "Start-Process cmd.exe -ArgumentList '/c D:\AgentWorkspace\go2rtc\go2rtc.exe -c D:\AgentWorkspace\go2rtc\go2rtc.yaml >> %CD%\logs\go2rtc.log 2>&1' -WindowStyle Hidden"
@@ -51,12 +52,21 @@ if errorlevel 1 (
 )
 echo [OK] manager started
 
+echo [%time%] Starting MCP Server...
+start "%PROCESS_PREFIX%-MCP" /B pythonw "%~dp0src\mcp\server.py" --transport http --host 127.0.0.1 --port 5001
+if errorlevel 1 (
+    echo [ERROR] MCP Server failed to start
+    pause
+    exit /b 1
+)
+echo [OK] MCP Server started
+
 echo.
 echo ========================================
 echo   All services started! (background)
 echo ========================================
 echo.
-echo Logs: logs\go2rtc.log  logs\main.log  logs\manager.log
+echo Logs: logs\go2rtc.log  logs\main.log  logs\manager.log  logs\mcp.log
 echo Web: http://localhost:5000
 echo Stop: run stop.bat
 echo.
