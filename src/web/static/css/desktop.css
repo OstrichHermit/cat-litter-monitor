@@ -192,12 +192,20 @@ body, .header, .video-card, .status-card, .records-section, .card-header,
 }
 
 [data-theme="dark"] .sidebar::-webkit-scrollbar-thumb,
-[data-theme="dark"] .records-list::-webkit-scrollbar-thumb {
+[data-theme="dark"] .records-list::-webkit-scrollbar-thumb,
+[data-theme="dark"] .records-content::-webkit-scrollbar-thumb,
+[data-theme="dark"] .notification-content::-webkit-scrollbar-thumb,
+[data-theme="dark"] .notification-list::-webkit-scrollbar-thumb,
+[data-theme="dark"] .monitor-log-content::-webkit-scrollbar-thumb {
     background: #3a3a5a;
 }
 
 [data-theme="dark"] .sidebar::-webkit-scrollbar-thumb:hover,
-[data-theme="dark"] .records-list::-webkit-scrollbar-thumb:hover {
+[data-theme="dark"] .records-list::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] .records-content::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] .notification-content::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] .notification-list::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] .monitor-log-content::-webkit-scrollbar-thumb:hover {
     background: #5a5a7a;
 }
 
@@ -961,23 +969,35 @@ body {
 
 /* Scrollbar */
 .sidebar::-webkit-scrollbar,
-.records-list::-webkit-scrollbar {
+.records-list::-webkit-scrollbar,
+.records-content::-webkit-scrollbar,
+.notification-content::-webkit-scrollbar,
+.notification-list::-webkit-scrollbar {
     width: 6px;
 }
 
 .sidebar::-webkit-scrollbar-track,
-.records-list::-webkit-scrollbar-track {
+.records-list::-webkit-scrollbar-track,
+.records-content::-webkit-scrollbar-track,
+.notification-content::-webkit-scrollbar-track,
+.notification-list::-webkit-scrollbar-track {
     background: transparent;
 }
 
 .sidebar::-webkit-scrollbar-thumb,
-.records-list::-webkit-scrollbar-thumb {
+.records-list::-webkit-scrollbar-thumb,
+.records-content::-webkit-scrollbar-thumb,
+.notification-content::-webkit-scrollbar-thumb,
+.notification-list::-webkit-scrollbar-thumb {
     background: var(--gray-300);
     border-radius: 3px;
 }
 
 .sidebar::-webkit-scrollbar-thumb:hover,
-.records-list::-webkit-scrollbar-thumb:hover {
+.records-list::-webkit-scrollbar-thumb:hover,
+.records-content::-webkit-scrollbar-thumb:hover,
+.notification-content::-webkit-scrollbar-thumb:hover,
+.notification-list::-webkit-scrollbar-thumb:hover {
     background: var(--gray-600);
 }
 
