@@ -42,7 +42,7 @@ An intelligent cat litter box monitoring system based on YOLO object detection. 
 - Photos automatically classified by identification status
 
 **📊 Service Monitoring**
-- 4 independent processes running and monitored
+- 5 independent processes running and monitored
 - Manager watchdog for automatic restart of abnormal processes
 - Real-time log panels integrated in Web interface
 - One-click restart/stop all services
@@ -50,20 +50,26 @@ An intelligent cat litter box monitoring system based on YOLO object detection. 
 
 ## 🏗️ System Architecture
 
-The system consists of 4 concurrent processes, communicating via file system (JSON state files, SQLite database).
+The system consists of 5 concurrent processes, communicating via file system (JSON state files, SQLite database) and WebSocket.
 
 ```
-┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│   go2rtc    │  │    Main     │  │   Manager   │  │ MCP Server  │
-│  Stream Relay│  │Core+Web    │  │  Watchdog  │  │ External API│
-└──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
-       │                │                │                │
-       │         ┌──────┴──────┐         │         ┌──────┴──────┐
-       │         │  FastAPI    │         │         │  FastMCP    │
-       │         │  WebSocket  │         │         │  HTTP/Stdio │
-       │         └──────┬──────┘         │         └──────┬──────┘
-       │                │                │                │
-       └────────────────┴────────────────┴────────────────┘
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│   go2rtc    │  │    Main     │  │   Manager   │
+│  Stream Relay│  │ Core Monitor│  │  Watchdog  │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │                │                │
+       │         ┌──────┴──────┐         │
+       │         │ WebSocket   │         │
+       │         │   Server    │         │
+       │         └──────┬──────┘         │
+       │                │                │
+┌──────┴──────┐  ┌──────┴──────┐  ┌──────┴──────┐
+│    Web      │  │ MCP Server  │  │             │
+│   Web UI    │  │ External API│  │             │
+│   Client    │  │ HTTP/Stdio │  │             │
+└─────────────┘  └─────────────┘  └─────────────┘
+       │                │                │
+       └────────────────┴────────────────┘
                               │
                     ┌─────────┴─────────┐
                     │  SQLite Database  │
@@ -77,7 +83,8 @@ The system consists of 4 concurrent processes, communicating via file system (JS
 | Process | Module | Responsibility |
 |---------|--------|----------------|
 | go2rtc | Video Stream Relay | RTSP stream reception and forwarding |
-| Main | `src/main.py` | YOLO detection, object tracking, photo capture, Web interface |
+| Main | `src/main.py` | YOLO detection, object tracking, photo capture, internal WebSocket API |
+| Web | `src/web/app.py` | Web interface (FastAPI + WebSocket), real-time data receiver |
 | Manager | `src/manager.py` | Process health check, automatic restart on failure |
 | MCP Server | `src/mcp/server.py` | External tool interface (HTTP/Stdio) |
 
@@ -169,12 +176,13 @@ Controls:
 start.bat
 ```
 
-After startup, 4 background processes run:
+After startup, 5 background processes run:
 
 1. **go2rtc** - Video stream relay
-2. **Main** - Core monitoring + Web interface
-3. **Manager** - Watchdog (auto monitor and restart abnormal processes)
-4. **MCP Server** - MCP tool interface
+2. **Main** - Core monitoring (detection, tracking, photo capture)
+3. **Web** - Web management interface
+4. **Manager** - Watchdog (auto monitor and restart abnormal processes)
+5. **MCP Server** - MCP tool interface
 
 After starting, visit **Web Management Interface**: http://localhost:5000
 
@@ -327,6 +335,11 @@ web:
   host: 0.0.0.0                     # Listening address
   port: 5000                        # Listening port
 
+# Main process configuration (internal API for Web server connection)
+main:
+  host: 127.0.0.1                    # Internal API listening address (localhost only)
+  port: 5002                         # Internal API listening port
+
 # Cat names example
 cats:
   - name: Cat1
@@ -352,6 +365,7 @@ cat-litter-monitor/
 │   ├── main.log                   # Main process log
 │   ├── manager.log                # Manager log
 │   ├── mcp.log                    # MCP Server log
+│   ├── web.log                    # Web server log
 │   └── litter_monitor.log         # System log
 ├── photo/
 │   └── YYYY-MM-DD/
@@ -366,7 +380,8 @@ cat-litter-monitor/
 │   ├── annotate_roi_go2rtc.py     # ROI area annotation tool
 │   └── setup_lan_access.bat       # LAN access configuration script
 ├── src/
-│   ├── main.py                    # Main program entry
+│   ├── main.py                    # Main program entry (monitoring core)
+│   ├── internal_api.py            # Internal WebSocket API (for Web server connection)
 │   ├── manager.py                 # Watchdog process
 │   ├── config.py                  # Configuration management
 │   ├── core/
@@ -379,7 +394,7 @@ cat-litter-monitor/
 │   │   ├── database.py            # Database operations
 │   │   └── photo_manager.py       # Photo file management
 │   ├── web/
-│   │   └── app.py                # Web interface (FastAPI + WebSocket)
+│   │   └── app.py                # Web server (standalone process, FastAPI + WebSocket)
 │   ├── mcp/
 │   │   └── server.py             # MCP server
 │   └── utils/
@@ -402,10 +417,10 @@ cat-litter-monitor/
 
 ### Web Interface Not Accessible
 
-1. Check if Main process is running
-2. Confirm port is not occupied
-3. Check `logs/main.log` for troubleshooting
-4. Check process status in Web interface service monitoring panel
+1. Check if Web process is running (Web and Main are independent processes)
+2. Confirm port 5000 is not occupied
+3. Check `logs/web.log` for troubleshooting
+4. Check process status in service monitoring panel
 
 ### Cat Not Detected
 

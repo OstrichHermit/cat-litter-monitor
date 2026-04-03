@@ -43,6 +43,12 @@ echo [OK] main started
 
 timeout /t 1 /nobreak >nul
 
+echo [%time%] Starting Web Server...
+start "" /b "%PYTHONW%" "%~dp0src\web\app.py"
+echo [OK] Web Server started
+
+timeout /t 1 /nobreak >nul
+
 echo [%time%] Starting manager...
 start "" /b "%PYTHONW%" "%~dp0src\manager.py"
 echo [OK] manager started

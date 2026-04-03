@@ -18,6 +18,10 @@ from pathlib import Path
 import asyncio
 import subprocess
 import time
+import websockets
+import logging
+import sys
+import threading
 
 
 class ConnectionManager:
@@ -84,6 +88,7 @@ LOG_FILES = {
     "manager": PROJECT_ROOT / "logs" / "manager.log",
     "go2rtc": PROJECT_ROOT / "logs" / "go2rtc.log",
     "mcp": PROJECT_ROOT / "logs" / "mcp.log",
+    "web": PROJECT_ROOT / "logs" / "web.log",
 }
 
 # 进程缓存
@@ -130,6 +135,7 @@ def get_service_status(service: str) -> Dict:
         "manager": "src\\manager.py",
         "go2rtc": "go2rtc.exe",
         "mcp": "cat-litter-monitor\\src\\mcp\\server",
+        "web": "cat-litter-monitor\\src\\web\\app",
     }
 
     if service == "go2rtc":
@@ -183,14 +189,103 @@ def ensure_timestamp(line: str) -> str:
     # 已有统一格式，直接返回
     if re.match(r'^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\]', line):
         return line
-    # go2rtc 格式：HH:MM:SS.mmm INF/WRN/ERR message → 剥掉前缀，用我们的时间戳
-    go2rtc_match = re.match(r'^\d{2}:\d{2}:\d{2}\.\d+\s+(?:INF|WRN|ERR|DBG)\s+(.*)', line)
+    # go2rtc 格式：HH:MM:SS.mmm INF/WRN/ERR message → 保留原始时间，补上日期
+    go2rtc_match = re.match(r'^(\d{2}:\d{2}:\d{2})\.\d+\s+(?:INF|WRN|ERR|DBG)\s+(.*)', line)
     if go2rtc_match:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return f"[{timestamp}] {go2rtc_match.group(1)}"
+        date_part = datetime.now().strftime("%Y-%m-%d")
+        return f"[{date_part} {go2rtc_match.group(1)}] {go2rtc_match.group(2)}"
     # 其他无时间戳行，补充当前时间
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return f"[{timestamp}] {line}"
+
+
+class MainBridge:
+    """
+    WebSocket 客户端，连接到 main 进程的 InternalAPI 接收实时数据。
+
+    在后台线程中运行，断线自动重连。
+    """
+
+    def __init__(self, ws_url: str, web_app: 'WebApp', logger: logging.Logger = None):
+        self.ws_url = ws_url
+        self.web_app = web_app
+        self.logger = logger or logging.getLogger(__name__)
+        self._running = False
+
+    def start(self) -> None:
+        """在后台线程中启动连接"""
+        self._running = True
+        thread = threading.Thread(target=self._connect_loop, daemon=True, name="MainBridge")
+        thread.start()
+        self.logger.info(f"MainBridge 已启动，将连接 {self.ws_url}")
+
+    def stop(self) -> None:
+        """停止连接"""
+        self._running = False
+
+    def _connect_loop(self) -> None:
+        """连接循环，断线自动重连"""
+        while self._running:
+            try:
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self._connect_and_receive(loop))
+                loop.close()
+            except Exception as e:
+                self.logger.debug(f"MainBridge 连接异常: {e}")
+
+            if self._running:
+                self.logger.info("MainBridge 将在 2 秒后重连...")
+                time.sleep(2)
+
+    async def _connect_and_receive(self, loop: asyncio.AbstractEventLoop) -> None:
+        """建立连接并接收数据"""
+        async with websockets.connect(self.ws_url) as ws:
+            self.logger.info("MainBridge 已连接到 main 进程")
+            async for message in ws:
+                if not self._running:
+                    break
+                # binary frame = JPEG 视频帧
+                if isinstance(message, bytes):
+                    try:
+                        frame = cv2.imdecode(np.frombuffer(message, dtype=np.uint8), cv2.IMREAD_COLOR)
+                        if frame is not None:
+                            self.web_app.system_state['frame'] = frame
+                    except Exception as e:
+                        self.logger.debug(f"解码帧失败: {e}")
+                # text frame = JSON 数据
+                else:
+                    try:
+                        data = json.loads(message)
+                        msg_type = data.get('type')
+                        msg_data = data.get('data')
+
+                        if msg_type == 'status':
+                            self.web_app.system_state['running'] = msg_data['running']
+                            self.web_app.manager.broadcast_sync({
+                                'type': 'status_update',
+                                'data': msg_data
+                            })
+                        elif msg_type == 'statistics':
+                            self.web_app.system_state['statistics'] = msg_data
+                            self.web_app.manager.broadcast_sync({
+                                'type': 'statistics_update',
+                                'data': msg_data
+                            })
+                        elif msg_type == 'detections':
+                            self.web_app.system_state['detections'] = msg_data
+                        elif msg_type == 'tracks':
+                            self.web_app.system_state['tracks'] = msg_data
+                        elif msg_type == 'records_update':
+                            self.web_app.manager.broadcast_sync({
+                                'type': 'records_update',
+                                'data': msg_data
+                            })
+                    except json.JSONDecodeError:
+                        self.logger.debug(f"无法解析消息: {message}")
+                    except Exception as e:
+                        self.logger.debug(f"处理消息失败: {e}")
 
 
 class WebApp:
@@ -214,7 +309,8 @@ class WebApp:
         port: int = 5000,
         debug: bool = False,
         secret_key: str | None = None,
-        database=None
+        database=None,
+        main_ws_url: str = None
     ):
         """
         初始化Web应用
@@ -232,6 +328,10 @@ class WebApp:
         self.stop_callback = None
         self.restart_callback = None
         self.database = database
+
+        # 内部API连接URL
+        self.main_ws_url = main_ws_url
+        self._main_bridge = None
 
         # 视频流客户端计数器
         self.stream_clients = 0
@@ -888,7 +988,7 @@ class WebApp:
         @self.app.get("/api/services/status")
         async def get_services_status():
             """获取所有服务的运行状态"""
-            services = ["main", "manager", "go2rtc", "mcp"]
+            services = ["main", "manager", "go2rtc", "mcp", "web"]
             status = {}
             for service in services:
                 status[service] = get_service_status(service)
@@ -965,7 +1065,7 @@ class WebApp:
             try:
                 await websocket.send_json({"type": "connected"})
                 while True:
-                    services = ["main", "manager", "go2rtc", "mcp"]
+                    services = ["main", "manager", "go2rtc", "mcp", "web"]
                     status = {}
                     for service in services:
                         status[service] = get_service_status(service)
@@ -1095,24 +1195,6 @@ class WebApp:
             'data': {'running': running}
         })
 
-    def set_stop_callback(self, callback) -> None:
-        """
-        设置停止回调函数
-
-        Args:
-            callback: 停止系统的回调函数
-        """
-        self.stop_callback = callback
-
-    def set_restart_callback(self, callback) -> None:
-        """
-        设置重启回调函数
-
-        Args:
-            callback: 重启系统的回调函数
-        """
-        self.restart_callback = callback
-
     def notify_records_update(self) -> None:
         """
         通知前端记录已更新
@@ -1134,6 +1216,15 @@ class WebApp:
         """
         运行Web应用
         """
+        # 如果配置了 main WebSocket URL，启动 MainBridge 连接
+        if self.main_ws_url:
+            self._main_bridge = MainBridge(
+                ws_url=self.main_ws_url,
+                web_app=self,
+                logger=logging.getLogger(__name__)
+            )
+            self._main_bridge.start()
+
         import uvicorn
         uvicorn.run(
             self.app,
@@ -1154,3 +1245,48 @@ def create_templates_directory():
     static_dir = Path(__file__).parent / 'static'
     templates_dir.mkdir(parents=True, exist_ok=True)
     static_dir.mkdir(parents=True, exist_ok=True)
+
+
+def main():
+    """
+    Web服务器独立入口
+    """
+    import argparse
+    import sys
+    from pathlib import Path
+
+    # 添加项目路径
+    project_root = Path(__file__).parent.parent.parent
+    sys.path.insert(0, str(project_root))
+
+    # 设置日志重定向
+    from src.utils.log_writer import setup_logging
+    setup_logging('web')
+
+    parser = argparse.ArgumentParser(description='猫厕所监控系统 - Web服务器')
+    parser.add_argument('--config', type=str, default=None, help='配置文件路径')
+    args = parser.parse_args()
+
+    from src.config import get_config
+    config = get_config(args.config)
+
+    web_config = config.get_web_config()
+    internal_api_config = config.get_main_config()
+    internal_api_host = internal_api_config.get('host', '127.0.0.1')
+    internal_api_port = internal_api_config.get('port', 5002)
+
+    app = WebApp(
+        host=web_config.get('host', '0.0.0.0'),
+        port=web_config.get('port', 5000),
+        debug=web_config.get('debug', False),
+        main_ws_url=f"ws://{internal_api_host}:{internal_api_port}"
+    )
+
+    # 创建模板目录
+    create_templates_directory()
+
+    app.run()
+
+
+if __name__ == '__main__':
+    main()

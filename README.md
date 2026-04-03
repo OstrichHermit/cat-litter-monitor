@@ -42,7 +42,7 @@ An intelligent cat litter box monitoring system based on YOLO object detection. 
 - 照片自动按识别状态分类存储
 
 **📊 服务监控**
-- 4 个进程独立运行和监控
+- 5 个进程独立运行和监控
 - Manager 看门狗自动重启异常进程
 - Web 界面集成实时日志面板
 - 一键重启/停止所有服务
@@ -50,20 +50,26 @@ An intelligent cat litter box monitoring system based on YOLO object detection. 
 
 ## 🏗️ 系统架构
 
-系统由 4 个并发进程组成，通过文件系统（JSON 状态文件、SQLite 数据库）进行进程间通信。
+系统由 5 个并发进程组成，通过文件系统（JSON 状态文件、SQLite 数据库）和 WebSocket 进行进程间通信。
 
 ```
-┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│   go2rtc    │  │    Main     │  │   Manager   │  │ MCP Server  │
-│  视频流中转  │  │ 核心监控+Web │  │   看门狗    │  │  外部接口   │
-└──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
-       │                │                │                │
-       │         ┌──────┴──────┐         │         ┌──────┴──────┐
-       │         │  FastAPI    │         │         │  FastMCP    │
-       │         │  WebSocket  │         │         │  HTTP/Stdio │
-       │         └──────┬──────┘         │         └──────┬──────┘
-       │                │                │                │
-       └────────────────┴────────────────┴────────────────┘
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│   go2rtc    │  │    Main     │  │   Manager   │
+│  视频流中转  │  │  核心监控    │  │   看门狗    │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │                │                │
+       │         ┌──────┴──────┐         │
+       │         │ WebSocket   │         │
+       │         │  服务端     │         │
+       │         └──────┬──────┘         │
+       │                │                │
+┌──────┴──────┐  ┌──────┴──────┐  ┌──────┴──────┐
+│    Web      │  │ MCP Server  │  │             │
+│  Web 界面   │  │  外部接口   │  │             │
+│  客户端     │  │ HTTP/Stdio │  │             │
+└─────────────┘  └─────────────┘  └─────────────┘
+       │                │                │
+       └────────────────┴────────────────┘
                               │
                     ┌─────────┴─────────┐
                     │  SQLite 数据库     │
@@ -77,7 +83,8 @@ An intelligent cat litter box monitoring system based on YOLO object detection. 
 | 进程 | 模块 | 职责 |
 |------|------|------|
 | go2rtc | 视频流中转 | RTSP 视频流接收和转发 |
-| Main | `src/main.py` | YOLO 检测、目标追踪、拍照、Web 界面 |
+| Main | `src/main.py` | YOLO 检测、目标追踪、拍照、内部 WebSocket API |
+| Web | `src/web/app.py` | Web 界面（FastAPI + WebSocket）、实时数据接收 |
 | Manager | `src/manager.py` | 进程健康检查、异常自动重启 |
 | MCP Server | `src/mcp/server.py` | 对外暴露工具接口（HTTP/Stdio） |
 
@@ -169,12 +176,13 @@ python scripts/annotate_roi_go2rtc.py
 start.bat
 ```
 
-启动后包含 4 个后台进程：
+启动后包含 5 个后台进程：
 
 1. **go2rtc** - 视频流中转
-2. **Main** - 核心监控 + Web 界面
-3. **Manager** - 看门狗（自动监控和重启异常进程）
-4. **MCP Server** - MCP 工具接口
+2. **Main** - 核心监控（检测、追踪、拍照）
+3. **Web** - Web 管理界面
+4. **Manager** - 看门狗（自动监控和重启异常进程）
+5. **MCP Server** - MCP 工具接口
 
 启动后访问 **Web 管理界面**：http://localhost:5000
 
@@ -327,6 +335,11 @@ web:
   host: 0.0.0.0                     # 监听地址
   port: 5000                        # 监听端口
 
+# Main 进程配置（内部 API，供 Web 服务器连接）
+main:
+  host: 127.0.0.1                    # 内部 API 监听地址（仅本地）
+  port: 5002                         # 内部 API 监听端口
+
 # 猫咪名字配置示例
 cats:
   - name: 猫咪1
@@ -352,6 +365,7 @@ cat-litter-monitor/
 │   ├── main.log                    # 主进程日志
 │   ├── manager.log                 # Manager 日志
 │   ├── mcp.log                     # MCP Server 日志
+│   ├── web.log                     # Web 服务器日志
 │   └── litter_monitor.log          # 系统日志
 ├── photo/
 │   └── YYYY-MM-DD/
@@ -366,7 +380,8 @@ cat-litter-monitor/
 │   ├── annotate_roi_go2rtc.py      # ROI 区域标注工具
 │   └── setup_lan_access.bat        # 局域网访问配置脚本
 ├── src/
-│   ├── main.py                     # 主程序入口
+│   ├── main.py                     # 主程序入口（监控核心）
+│   ├── internal_api.py             # 内部 WebSocket API（供 Web 连接）
 │   ├── manager.py                  # 看门狗进程
 │   ├── config.py                   # 配置管理
 │   ├── core/
@@ -379,7 +394,7 @@ cat-litter-monitor/
 │   │   ├── database.py             # 数据库操作
 │   │   └── photo_manager.py        # 照片文件管理
 │   ├── web/
-│   │   └── app.py                  # Web 界面（FastAPI + WebSocket）
+│   │   └── app.py                  # Web 服务器（独立进程，FastAPI + WebSocket）
 │   ├── mcp/
 │   │   └── server.py               # MCP 服务器
 │   └── utils/
@@ -402,10 +417,10 @@ cat-litter-monitor/
 
 ### Web 界面无法访问
 
-1. 检查 Main 进程是否运行
-2. 确认端口未被占用
-3. 查看 `logs/main.log` 排查问题
-4. 在 Web 界面的服务监控面板检查各进程状态
+1. 检查 Web 进程是否运行（Web 和 Main 是独立进程）
+2. 确认端口 5000 未被占用
+3. 查看 `logs/web.log` 排查问题
+4. 在服务监控面板检查各进程状态
 
 ### 检测不到猫咪
 

@@ -21,8 +21,8 @@ if not defined PYTHONW set PYTHONW=pythonw.exe
 
 echo [%time%] Stopping business processes...
 
-REM Kill all cat-litter-monitor processes except manager
-python "%~dp0scripts\kill_monitor.py" manager >nul 2>&1
+REM Kill all cat-litter-monitor processes except manager and web
+python "%~dp0scripts\kill_monitor.py" manager web >nul 2>&1
 
 REM Kill go2rtc
 taskkill /F /IM go2rtc.exe >nul 2>&1

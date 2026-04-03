@@ -208,6 +208,10 @@ class Config:
         """
         return self.config.get('web', {})
 
+    def get_main_config(self) -> dict:
+        """获取Main进程配置"""
+        return self.config.get('main', {})
+
     def get_system_config(self) -> Dict[str, Any]:
         """
         获取系统配置

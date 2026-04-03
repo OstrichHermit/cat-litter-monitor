@@ -30,3 +30,6 @@ psutil>=5.9.0
 # MCP框架
 mcp>=1.0.0
 fastmcp>=2.14.0
+
+# WebSocket
+websockets>=12.0

@@ -36,6 +36,16 @@
                 <div class="monitor-sidebar">
                     <div class="monitor-sidebar-title">服务状态</div>
                     <div class="monitor-component-list">
+                        <div class="monitor-component-item" data-service="web">
+                            <div class="monitor-component-info">
+                                <span class="monitor-component-name">Web</span>
+                                <span class="monitor-component-pid" id="monitor-pid-web">--</span>
+                            </div>
+                            <div class="monitor-component-status">
+                                <span class="monitor-status-dot" id="monitor-dot-web"></span>
+                                <span class="monitor-status-text" id="monitor-status-web">检查中</span>
+                            </div>
+                        </div>
                         <div class="monitor-component-item" data-service="manager">
                             <div class="monitor-component-info">
                                 <span class="monitor-component-name">Manager</span>
@@ -58,7 +68,7 @@
                         </div>
                         <div class="monitor-component-item" data-service="main">
                             <div class="monitor-component-info">
-                                <span class="monitor-component-name">Main (Web)</span>
+                                <span class="monitor-component-name">Main</span>
                                 <span class="monitor-component-pid" id="monitor-pid-main">--</span>
                             </div>
                             <div class="monitor-component-status">
@@ -106,7 +116,7 @@
                         <div class="monitor-log-panel" data-service="main">
                             <div class="monitor-log-header">
                                 <span class="monitor-status-dot" id="monitor-log-dot-main"></span>
-                                <span class="monitor-log-title">Main (Web)</span>
+                                <span class="monitor-log-title">Main</span>
                                 <div class="monitor-log-actions">
                                     <button class="monitor-log-btn" onclick="clearMonitorLog('main')">清空</button>
                                     <button class="monitor-log-btn" onclick="scrollMonitorToBottom('main')">底部</button>
