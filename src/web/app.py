@@ -12,6 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from datetime import datetime, date
 import json
 from typing import Optional, Dict, List
+import io
 import cv2
 import numpy as np
 from pathlib import Path
@@ -288,6 +289,10 @@ class MainBridge:
                         self.logger.debug(f"处理消息失败: {e}")
 
 
+# 缩略图缓存 {filepath: (content_type, thumbnail_bytes)}
+_thumbnail_cache: Dict[str, tuple] = {}
+
+
 class WebApp:
     """
     Web应用类
@@ -355,7 +360,7 @@ class WebApp:
         class NoCacheMiddleware(BaseHTTPMiddleware):
             async def dispatch(self, request, call_next):
                 response = await call_next(request)
-                if request.url.path.startswith("/static/"):
+                if request.url.path.startswith("/static/") and not request.url.path.startswith("/static/photo/"):
                     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
                     response.headers["Pragma"] = "no-cache"
                     response.headers["Expires"] = "0"
@@ -979,9 +984,72 @@ class WebApp:
                 if not full_path_resolved.exists():
                     return JSONResponse({'error': 'File not found'}, status_code=404)
 
-                return FileResponse(str(full_path_resolved))
+                response = FileResponse(str(full_path_resolved))
+                response.headers["Cache-Control"] = "public, max-age=86400"
+                return response
             except Exception as e:
                 return JSONResponse({'error': str(e)}, status_code=404)
+
+        @self.app.get('/thumb/{filepath:path}')
+        async def serve_photo_thumbnail(filepath: str):
+            """提供照片缩略图（200px 宽，保持宽高比）"""
+            try:
+                from src.config import get_config
+                import os
+                config = get_config()
+                photo_config = config.get_photo_config()
+                photo_base_dir = config.get_absolute_path(photo_config.get('photo_base_dir', 'photo'))
+
+                # 构建完整文件路径
+                full_path = os.path.join(photo_base_dir, filepath)
+
+                # 安全检查
+                full_path_resolved = Path(full_path).resolve()
+                photo_dir_resolved = Path(photo_base_dir).resolve()
+                if not str(full_path_resolved).startswith(str(photo_dir_resolved)):
+                    return JSONResponse({'error': 'Invalid path'}, status_code=400)
+
+                if not full_path_resolved.exists():
+                    return JSONResponse({'error': 'File not found'}, status_code=404)
+
+                # 检查内存缓存
+                if filepath in _thumbnail_cache:
+                    content_type, thumbnail_bytes = _thumbnail_cache[filepath]
+                    return StreamingResponse(
+                        io.BytesIO(thumbnail_bytes),
+                        media_type=content_type,
+                        headers={"Cache-Control": "public, max-age=86400"}
+                    )
+
+                # 读取并生成缩略图
+                img = cv2.imread(str(full_path_resolved))
+                if img is None:
+                    return JSONResponse({'error': 'Failed to read image'}, status_code=500)
+
+                h, w = img.shape[:2]
+                thumb_width = 200
+                thumb_height = int(h * thumb_width / w)
+                thumbnail = cv2.resize(img, (thumb_width, thumb_height), interpolation=cv2.INTER_AREA)
+
+                # 编码为 JPEG
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 70]
+                success, buffer = cv2.imencode('.jpg', thumbnail, encode_param)
+                if not success:
+                    return JSONResponse({'error': 'Failed to encode image'}, status_code=500)
+
+                thumbnail_bytes = buffer.tobytes()
+                content_type = 'image/jpeg'
+
+                # 存入缓存
+                _thumbnail_cache[filepath] = (content_type, thumbnail_bytes)
+
+                return StreamingResponse(
+                    io.BytesIO(thumbnail_bytes),
+                    media_type=content_type,
+                    headers={"Cache-Control": "public, max-age=86400"}
+                )
+            except Exception as e:
+                return JSONResponse({'error': str(e)}, status_code=500)
 
         # ---- 服务监控 API ----
 

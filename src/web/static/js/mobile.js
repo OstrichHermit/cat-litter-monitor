@@ -199,13 +199,14 @@ function updateRecords(data) {
 function createRecordItem(record, section) {
     const photoPath = record.photo_path.replace(/^photo\//, '');
     const photoUrl = `/static/photo/${photoPath}`;
+    const thumbUrl = `/thumb/${photoPath}`;
     return `
         <div class="record-item" data-record-id="${record.id}" data-section="${section}">
             <div class="record-info">
                 <span class="record-time">${record.record_time}</span>
                 <span class="record-cat">${record.cat_name}</span>
             </div>
-            <img src="${photoUrl}" class="record-thumb" alt="照片" onclick="viewImage('${photoUrl}', event)">
+            <img src="${thumbUrl}" class="record-thumb" alt="照片" onclick="viewImage('${photoUrl}', event)">
 
             <!-- Edit Controls -->
             <div class="edit-controls">
@@ -516,6 +517,7 @@ function renderNotifications(photos) {
                     relativePath = `${date}/${unidentified}/${filename}`;
                 }
                 const photoUrl = `/static/photo/${relativePath}`;
+                const thumbUrl = `/thumb/${relativePath}`;
                 const timeMatch = photo.filename.match(/_(\d{2})(\d{2})/);
                 const timeStr = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : '';
                 const displayName = photo.type === 'unidentifiable' ? '无法识别' : '未识别';
@@ -526,7 +528,7 @@ function renderNotifications(photos) {
                             <span class="notification-time">${timeStr}</span>
                             <span class="notification-name ${photo.type === 'unidentifiable' ? 'unidentifiable' : ''}">${displayName}</span>
                         </div>
-                        <img src="${photoUrl}" class="notification-img" alt="照片" onclick="viewImage('${photoUrl}', event)">
+                        <img src="${thumbUrl}" class="notification-img" alt="照片" onclick="viewImage('${photoUrl}', event)">
 
                         <!-- Edit Controls -->
                         <div class="edit-controls">
