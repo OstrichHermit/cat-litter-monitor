@@ -158,6 +158,21 @@ class ProcessManager:
             self.logger.error(f"检查MCP服务器进程失败: {e}")
             return False
 
+    def check_web_server_alive(self) -> bool:
+        """检查Web服务器进程是否存活"""
+        try:
+            result = subprocess.run(
+                ['wmic', 'process', 'where',
+                 "(name='python.exe' or name='pythonw.exe') and commandline like '%cat-litter-monitor%web%app%'",
+                 'get', 'ProcessId', '/format:csv'],
+                capture_output=True, text=True, encoding='utf-8',
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            return bool(result.stdout.strip().split('\n')[-1].strip())
+        except Exception as e:
+            self.logger.error(f"检查Web服务器进程失败: {e}")
+            return False
+
     def start_mcp_server(self) -> bool:
         """启动MCP服务器（从配置文件读取参数）"""
         try:
@@ -178,6 +193,21 @@ class ProcessManager:
             return True
         except Exception as e:
             self.logger.error(f"启动MCP服务器失败: {e}")
+            return False
+
+    def start_web_server(self) -> bool:
+        """启动Web服务器"""
+        try:
+            web_script = project_root / 'src' / 'web' / 'app.py'
+            subprocess.Popen(
+                [sys.executable, str(web_script)],
+                cwd=str(project_root),
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            self.logger.info("Web 服务器已启动")
+            return True
+        except Exception as e:
+            self.logger.error(f"启动Web服务器失败: {e}")
             return False
 
     def should_restart(self) -> bool:
@@ -275,6 +305,12 @@ class ProcessManager:
                     if not self.check_mcp_server_alive():
                         self.logger.warning("MCP 服务器进程未运行，尝试重启...")
                         self.start_mcp_server()
+
+                    # 检查 Web 服务器进程是否存活
+                    if not self.check_web_server_alive():
+                        self.logger.warning("Web 服务器进程未运行，尝试重启...")
+                        self.start_web_server()
+
                     # 正常状态，读取状态并记录
                     state = self.read_state()
                     failures = state.get('consecutive_failures', 0)

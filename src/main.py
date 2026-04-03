@@ -29,7 +29,7 @@ from src.core.object_tracker import ObjectTracker
 from src.core.roi import MultiROI
 from src.core.photo_capture import PhotoCaptureManager, PhotoCaptureConfig
 from src.storage.database import Database
-from src.web.app import WebApp, create_templates_directory
+from src.internal_api import InternalAPIServer
 import cv2
 import numpy as np
 
@@ -48,7 +48,7 @@ class LitterMonitorSystem:
         tracker: 目标追踪器
         analyzer: 行为分析器
         database: 数据库对象
-        web_app: Web应用对象
+        internal_api: 内部API服务对象
         running: 运行标志
     """
 
@@ -138,21 +138,14 @@ class LitterMonitorSystem:
         self.database = Database(db_path=db_path)
         self.logger.info(f"数据库初始化完成: {db_path}")
 
-        # 初始化Web应用
-        web_config = self.config.get_web_config()
-        self.web_app = WebApp(
-            host=web_config.get('host', '0.0.0.0'),
-            port=web_config.get('port', 5000),
-            debug=web_config.get('debug', False),
-            database=self.database
+        # 初始化内部API（用于向Web服务器推送数据）
+        internal_api_config = self.config.get_main_config()
+        self.internal_api = InternalAPIServer(
+            host=internal_api_config.get('host', '127.0.0.1'),
+            port=internal_api_config.get('port', 5002),
+            logger=self.logger
         )
-        # 设置停止回调
-        self.web_app.set_stop_callback(self.stop)
-        # 设置重启回调
-        self.web_app.set_restart_callback(self.restart)
-        # 创建模板目录
-        create_templates_directory()
-        self.logger.info(f"Web应用初始化完成: {web_config.get('host')}:{web_config.get('port')}")
+        self.logger.info(f"内部API初始化完成: {internal_api_config.get('host')}:{internal_api_config.get('port')}")
 
         # 初始化拍照管理器
         photo_config = self.config.get_photo_config()
@@ -206,13 +199,12 @@ class LitterMonitorSystem:
         self.logger.info("系统启动，更新统计数据...")
         self._update_statistics()
 
-        # 启动Web服务器（在单独线程中）
-        web_thread = threading.Thread(target=self.web_app.run, daemon=True)
-        web_thread.start()
-        self.logger.info("Web服务器已启动")
+        # 启动内部API WebSocket服务（在单独线程中）
+        self.internal_api.start()
+        self.logger.info("内部API服务已启动")
 
         # 更新Web状态
-        self.web_app.set_running(True)
+        self.internal_api.push_status(True)
 
         # 启动摄像头
         if not self.camera.start():
@@ -272,7 +264,7 @@ class LitterMonitorSystem:
                         processed_frame = frame.copy()
 
                     # 更新Web帧（无论是否处理，都更新视频流）
-                    self.web_app.update_frame(processed_frame)
+                    self.internal_api.push_frame(processed_frame)
 
                 except Exception as frame_error:
                     # 单帧处理异常，记录但继续运行
@@ -346,14 +338,14 @@ class LitterMonitorSystem:
             if photo_path:
                 self.logger.info(f"拍照成功: {photo_path}")
                 # 通知Web前端记录更新
-                self.web_app.notify_records_update()
+                self.internal_api.push_records_update()
 
         # 绘制结果
         display_frame = self._draw_results(display_frame, detections, tracks)
 
         # 更新Web数据
-        self.web_app.update_detections(detections)
-        self.web_app.update_tracks(tracks)
+        self.internal_api.push_detections(detections)
+        self.internal_api.push_tracks(tracks)
 
         return display_frame
 
@@ -403,7 +395,7 @@ class LitterMonitorSystem:
 
             # 获取统计
             summary = self.database.get_summary_statistics()
-            self.web_app.update_statistics(summary)
+            self.internal_api.push_statistics(summary)
 
             self.logger.info(f"统计更新: 总记录数 {summary['total_records']}")
         except Exception as e:
@@ -423,7 +415,7 @@ class LitterMonitorSystem:
         self._update_manager_state(0, 'stopped')
 
         # 更新Web状态
-        self.web_app.set_running(False)
+        self.internal_api.push_status(False)
 
         # 停止摄像头
         self.camera.stop()

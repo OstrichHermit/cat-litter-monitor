@@ -596,18 +596,19 @@ function closeLightbox() {
 // ============================================
 
 const monitorServices = ['manager', 'mcp', 'main', 'go2rtc'];
+const monitorLogServices = ['manager', 'mcp', 'main', 'go2rtc'];
 let monitorStatusWS = null;
 let monitorLogWS = {};
 let monitorAutoScroll = {};
 let monitorWSInitialized = false;
 
 // 初始化自动滚动状态
-monitorServices.forEach(s => monitorAutoScroll[s] = true);
+monitorLogServices.forEach(s => monitorAutoScroll[s] = true);
 
 function initMonitorWS() {
     if (!monitorWSInitialized) {
         connectMonitorStatusWS();
-        monitorServices.forEach(s => connectMonitorLogWS(s));
+        monitorLogServices.forEach(s => connectMonitorLogWS(s));
         monitorWSInitialized = true;
     }
 }
@@ -775,7 +776,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 页面加载后自动建立监控 WebSocket 连接
     initMonitorWS();
 
-    monitorServices.forEach(service => {
+    monitorLogServices.forEach(service => {
         const container = document.getElementById(`monitor-log-${service}`);
         if (container) {
             container.addEventListener('scroll', () => {
