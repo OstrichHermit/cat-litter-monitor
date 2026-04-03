@@ -214,13 +214,14 @@ function updateRecords(containerId, statsPrefix, records) {
     container.innerHTML = records.map(r => {
         const photoPath = r.photo_path.replace(/^photo\//, '');
         const photoUrl = `/static/photo/${photoPath}`;
+        const thumbUrl = `/thumb/${photoPath}`;
         const deleteClass = deleteMode[section] ? '' : 'hidden';
         const editClass = editMode[section] ? 'visible' : '';
         return `
             <div class="record">
                 <span class="record-time">${r.record_time}</span>
                 <span class="record-cat">${r.cat_name}</span>
-                <img src="${photoUrl}" class="record-img"
+                <img src="${thumbUrl}" class="record-img"
                      onclick="openLightbox('${photoUrl}')"
                      onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTIiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiPjwvdGV4dD48L3N2Zz4='"
                      alt="照片">
@@ -462,6 +463,7 @@ function renderNotifications(photos) {
                     relativePath = `${date}/${unidentified}/${filename}`;
                 }
                 const photoUrl = `/static/photo/${relativePath}`;
+                const thumbUrl = `/thumb/${relativePath}`;
 
                 // Extract time from filename: YYYYMMDD_HHMMSS.jpg -> HH:MM:SS
                 const timeMatch = photo.filename.match(/_(\d{2})(\d{2})(\d{2})/);
@@ -474,7 +476,7 @@ function renderNotifications(photos) {
                     <div class="notification-item">
                         <span class="notification-item-time">${photo.date} ${timeStr}</span>
                         <span class="notification-item-name ${photo.type === 'unidentifiable' ? 'unidentifiable' : ''}">${displayName}</span>
-                        <img src="${photoUrl}" class="notification-item-img"
+                        <img src="${thumbUrl}" class="notification-item-img"
                              onclick="openLightbox('${photoUrl}')"
                              onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iMzYiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjM2IiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTIiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiPjwvdGV4dD48L3N2Zz4='"
                              alt="照片">
