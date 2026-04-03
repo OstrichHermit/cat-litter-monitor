@@ -6,7 +6,44 @@ ROI（感兴趣区域）模块
 
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 from typing import List, Optional, Tuple
+
+# 系统字体路径（用于中文显示）
+_FONT_PATH = "C:/Windows/Fonts/simhei.ttf"
+_font_cache = {}
+
+
+def _get_font(size: int) -> ImageFont.FreeTypeFont:
+    """获取指定大小的字体（带缓存）"""
+    if size not in _font_cache:
+        _font_cache[size] = ImageFont.truetype(_FONT_PATH, size)
+    return _font_cache[size]
+
+
+def _put_chinese_text(img: np.ndarray, text: str, pos: Tuple[int, int],
+                      font_size: int, color: Tuple[int, int, int]) -> np.ndarray:
+    """
+    在OpenCV图像上绘制中文文本（使用PIL，仅一次BGR<->RGB转换）
+
+    Args:
+        img: OpenCV图像（BGR格式）
+        text: 文本内容
+        pos: 位置 (x, y)
+        font_size: 字体大小
+        color: 颜色 (B, G, R)
+
+    Returns:
+        绘制后的OpenCV图像
+    """
+    # BGR -> RGB（共享内存，不拷贝）
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img_pil = Image.fromarray(img_rgb)
+    draw = ImageDraw.Draw(img_pil)
+    font = _get_font(font_size)
+    draw.text(pos, text, font=font, fill=color)
+    # PIL -> numpy -> BGR（拷贝一次）
+    return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
 
 class MultiROI:
@@ -149,13 +186,11 @@ class MultiROI:
             if roi['type'] == 'rectangle':
                 x, y, w, h = roi['rectangle']
                 cv2.rectangle(frame_copy, (x, y), (x + w, y + h), color, 2)
-                cv2.putText(frame_copy, name, (x, y - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
+                frame_copy = _put_chinese_text(frame_copy, name, (x, y - 10), 18, color)
             else:
                 poly = np.array(roi['polygon'], dtype=np.int32)
                 cv2.polylines(frame_copy, [poly], True, color, 2)
                 center = np.mean(roi['polygon'], axis=0).astype(int)
-                cv2.putText(frame_copy, name, tuple(center),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
+                frame_copy = _put_chinese_text(frame_copy, name, tuple(center), 18, color)
 
         return frame_copy
