@@ -418,9 +418,17 @@ async function loadNotifications() {
         const data = await response.json();
 
         if (data.success) {
-            notificationCount = data.count;
+            // Filter to only show today and yesterday's photos
+            const now = new Date();
+            const today = now.toLocaleDateString('sv-SE'); // YYYY-MM-DD in local timezone
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toLocaleDateString('sv-SE');
+
+            const filteredPhotos = data.photos.filter(p => p.date === today || p.date === yesterdayStr);
+            notificationCount = filteredPhotos.length;
             updateNotificationBadge();
-            renderNotifications(data.photos);
+            renderNotifications(filteredPhotos);
         }
     } catch (err) {
         console.error('Failed to load notifications:', err);
