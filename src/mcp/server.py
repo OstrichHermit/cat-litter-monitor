@@ -6,6 +6,7 @@ MCP服务器入口
 """
 
 import sys
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +22,8 @@ import json
 import logging
 import argparse
 from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from src.storage.database import Database
 from src.storage.photo_manager import PhotoManager
@@ -46,6 +49,91 @@ logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
 
 # FastMCP 实例
 mcp = FastMCP('cat-litter-monitor')
+
+
+# ==================== OAuth 自动登录 ====================
+
+_oauth_codes: dict[str, dict] = {}
+
+def _get_oauth_base_url() -> str:
+    try:
+        port = int(get_config().get('mcp.port', 5001))
+    except Exception:
+        port = 5001
+    return f"http://127.0.0.1:{port}"
+
+async def _parse_oauth_body(request: Request) -> dict:
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        return await request.json()
+    form = await request.form()
+    return dict(form)
+
+@mcp.custom_route("/.well-known/oauth-protected-resource", methods=["GET"])
+async def _oauth_protected_resource(request: Request) -> Response:
+    return JSONResponse({
+        "authorization_servers": [_get_oauth_base_url()],
+        "resource": f"{_get_oauth_base_url()}/mcp",
+    })
+
+@mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET"])
+async def _oauth_authorization_server(request: Request) -> Response:
+    base_url = _get_oauth_base_url()
+    return JSONResponse({
+        "issuer": base_url,
+        "authorization_endpoint": f"{base_url}/oauth/authorize",
+        "token_endpoint": f"{base_url}/oauth/token",
+        "registration_endpoint": f"{base_url}/oauth/register",
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code"],
+        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": ["client_secret_post"],
+        "scopes_supported": ["mcp"],
+    })
+
+@mcp.custom_route("/oauth/register", methods=["POST"])
+async def _oauth_register(request: Request) -> Response:
+    body = await _parse_oauth_body(request)
+    client_id = f"mcp-{uuid.uuid4().hex[:8]}"
+    return JSONResponse({
+        "client_id": client_id,
+        "client_secret": f"secret-{uuid.uuid4().hex[:16]}",
+        "client_name": body.get("client_name", "MCP Client"),
+        "redirect_uris": body.get("redirect_uris", []),
+        "grant_types": ["authorization_code"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "client_secret_post",
+    })
+
+@mcp.custom_route("/oauth/authorize", methods=["GET"])
+async def _oauth_authorize(request: Request) -> Response:
+    redirect_uri = request.query_params.get("redirect_uri", "")
+    state = request.query_params.get("state", "")
+    code = uuid.uuid4().hex[:16]
+    _oauth_codes[code] = {
+        "redirect_uri": redirect_uri,
+        "client_id": request.query_params.get("client_id", ""),
+        "code_challenge": request.query_params.get("code_challenge", ""),
+    }
+    separator = "&" if "?" in redirect_uri else "?"
+    return RedirectResponse(
+        url=f"{redirect_uri}{separator}code={code}&state={state}",
+        status_code=302,
+    )
+
+@mcp.custom_route("/oauth/token", methods=["POST"])
+async def _oauth_token(request: Request) -> Response:
+    body = await _parse_oauth_body(request)
+    code = body.get("code", "")
+    if code and code in _oauth_codes:
+        del _oauth_codes[code]
+    access_token = f"dummy-{uuid.uuid4().hex[:32]}"
+    return JSONResponse({
+        "access_token": access_token,
+        "token_type": "Bearer",
+        "expires_in": 86400,
+        "scope": body.get("scope", "mcp"),
+    })
 
 
 class LitterMonitorMCPServer:
