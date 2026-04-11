@@ -239,8 +239,8 @@ class Go2RTCCamera:
             # 添加新帧
             self.queue.put(frame)
 
-            # 控制帧率（使用更短的延迟）
-            time.sleep(0.01)  # 减少延迟，提高响应速度
+            # 控制帧率
+            time.sleep(0.05)
 
     def read(self) -> Tuple[bool, Optional[cv2.typing.MatLike]]:
         """
