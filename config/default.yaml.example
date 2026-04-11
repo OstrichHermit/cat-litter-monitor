@@ -62,7 +62,7 @@ roi:
 
 # 系统配置
 system:
-  process_every_n_frames: 1    # 每N帧处理一次（1=每帧都处理）
+  target_fps: 10               # 主循环目标帧率（降低可显著减少 CPU 占用）
 
 # 目标追踪配置
 tracking:

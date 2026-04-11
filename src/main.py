@@ -215,11 +215,13 @@ class LitterMonitorSystem:
 
         # 主循环
         system_config = self.config.get_system_config()
-        process_every_n_frames = system_config.get('process_every_n_frames', 1)
+        target_fps = system_config.get('target_fps', 10)
+        frame_interval = 1.0 / target_fps
 
         try:
             consecutive_failures = 0
             while self.running:
+                loop_start = time.time()
                 try:
                     # 读取帧
                     ret, frame = self.camera.read()
@@ -238,9 +240,9 @@ class LitterMonitorSystem:
                     # Measure actual FPS
                     current_time = time.time()
                     if self._last_frame_time is not None:
-                        frame_interval = current_time - self._last_frame_time
-                        if frame_interval > 0:
-                            self._fps_samples.append(1.0 / frame_interval)
+                        fi = current_time - self._last_frame_time
+                        if fi > 0:
+                            self._fps_samples.append(1.0 / fi)
                             if len(self._fps_samples) > self._fps_sample_count:
                                 self._fps_samples.pop(0)
                                 self._actual_fps = sum(self._fps_samples) / len(self._fps_samples)
@@ -249,22 +251,21 @@ class LitterMonitorSystem:
                     if self.frame_count % 10 == 0:  # 每10帧更新一次，减少IO
                         self._update_manager_state(consecutive_failures, 'running')
 
-                    # 跳帧处理标记
-                    should_process = (self.frame_count % process_every_n_frames == 0)
-
                     # 每100帧记录一次
                     if self.frame_count % 100 == 0:
                         self.logger.info(f"已处理 {self.frame_count} 帧")
 
-                    # 处理帧（只在应该处理的帧上进行完整处理）
-                    if should_process:
-                        processed_frame = self._process_frame(frame)
-                    else:
-                        # 跳帧时只显示原始帧，保持视频流连续性
-                        processed_frame = frame.copy()
+                    # 处理帧
+                    processed_frame = self._process_frame(frame)
 
-                    # 更新Web帧（无论是否处理，都更新视频流）
+                    # 更新Web帧
                     self.internal_api.push_frame(processed_frame)
+
+                    # 帧率限制
+                    elapsed = time.time() - loop_start
+                    sleep_time = frame_interval - elapsed
+                    if sleep_time > 0:
+                        time.sleep(sleep_time)
 
                 except Exception as frame_error:
                     # 单帧处理异常，记录但继续运行
