@@ -74,6 +74,8 @@ class LitterMonitorSystem:
         self.running = False
         self.frame_count = 0
 
+        # AI 处理节流：仅在 target_fps 间隔时运行检测/追踪/拍照
+
         # FPS 测量
         self._last_frame_time = None
         self._actual_fps = 10.0  # initial estimate, will be updated
@@ -220,10 +222,10 @@ class LitterMonitorSystem:
 
         try:
             consecutive_failures = 0
+            last_process_time = None
             while self.running:
-                loop_start = time.time()
                 try:
-                    # 读取帧
+                    # 读取帧（持续读取，不 sleep）
                     ret, frame = self.camera.read()
                     if not ret:
                         consecutive_failures += 1
@@ -255,17 +257,11 @@ class LitterMonitorSystem:
                     if self.frame_count % 100 == 0:
                         self.logger.info(f"已处理 {self.frame_count} 帧")
 
-                    # 处理帧
-                    processed_frame = self._process_frame(frame)
-
-                    # 更新Web帧
-                    self.internal_api.push_frame(processed_frame)
-
-                    # 帧率限制
-                    elapsed = time.time() - loop_start
-                    sleep_time = frame_interval - elapsed
-                    if sleep_time > 0:
-                        time.sleep(sleep_time)
+                    # 跳帧处理：仅在 target_fps 间隔时处理并推流
+                    if last_process_time is None or (current_time - last_process_time) >= frame_interval:
+                        processed_frame = self._process_frame(frame)
+                        self.internal_api.push_frame(processed_frame)
+                        last_process_time = current_time
 
                 except Exception as frame_error:
                     # 单帧处理异常，记录但继续运行
