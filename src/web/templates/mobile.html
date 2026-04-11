@@ -6,7 +6,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>猫厕所监控</title>
-    <link rel="stylesheet" href="/static/css/mobile.css?v=4">
+    <link rel="stylesheet" href="/static/css/mobile.css?v=5">
 </head>
 <body>
     <div class="mobile-app">
@@ -31,12 +31,17 @@
                 <div class="monitor-container">
                     <div class="video-wrapper">
                         <img src="/video_feed" class="video-feed" id="videoFeed" alt="监控画面">
+                        <div class="video-placeholder-mobile hidden" id="videoPlaceholder">📷 画面推送已暂停</div>
                         <div class="status-overlay">
                             <span class="status-dot" id="statusDot"></span>
                             <span id="statusText">加载中...</span>
                         </div>
                     </div>
                     <div class="monitor-controls">
+                        <div class="frame-push-toggle-mobile">
+                            <span class="frame-push-label-mobile">画面</span>
+                            <div class="toggle-switch active" id="framePushToggle" onclick="toggleFramePush()"></div>
+                        </div>
                         <button class="control-btn btn-stop ripple" id="stopBtn">
                             🛑 停止
                         </button>
@@ -198,6 +203,6 @@
         </div>
     </div>
 
-    <script src="/static/js/mobile.js?v=4"></script>
+    <script src="/static/js/mobile.js?v=5"></script>
 </body>
 </html>

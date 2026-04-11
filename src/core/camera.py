@@ -13,8 +13,8 @@ import time
 import requests
 import numpy as np
 from typing import Optional, Tuple, Dict, Any
-from queue import Queue, Empty
 from dataclasses import dataclass
+from queue import Queue, Empty
 
 
 @dataclass
@@ -50,11 +50,7 @@ class Go2RTCCamera:
         width: 视频宽度
         height: 视频高度
         fps: 帧率
-        buffer_size: 缓冲区大小
         cap: VideoCapture对象
-        queue: 帧队列
-        stopped: 停止标志
-        thread: 读取线程
         stream_url: RTSP流地址
     """
 
@@ -64,7 +60,6 @@ class Go2RTCCamera:
         width: int = 1920,
         height: int = 1080,
         fps: int = 30,
-        buffer_size: int = 1
     ):
         """
         初始化go2rtc摄像头
@@ -74,18 +69,18 @@ class Go2RTCCamera:
             width: 视频宽度
             height: 视频高度
             fps: 帧率
-            buffer_size: 缓冲区大小
         """
         self.config = config
         self.width = width
         self.height = height
         self.fps = fps
-        self.buffer_size = buffer_size
 
         self.cap: Optional[cv2.VideoCapture] = None
-        self.queue: Queue = Queue(maxsize=buffer_size)
+        self.queue: Queue = Queue(maxsize=1)
         self.stopped = False
         self.thread: Optional[threading.Thread] = None
+        self._need_frame = threading.Event()
+        self._need_frame.set()  # 允许立即读取第一帧
         self.stream_url = ""
 
     def _build_stream_url(self) -> str:
@@ -177,9 +172,7 @@ class Go2RTCCamera:
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         self.cap.set(cv2.CAP_PROP_FPS, self.fps)
-
-        # 设置缓冲区大小
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, self.buffer_size)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         # 启动读取线程
         self.stopped = False
@@ -191,15 +184,23 @@ class Go2RTCCamera:
 
     def _update(self) -> None:
         """
-        更新帧队列（在单独线程中运行）
+        后台读取线程：与主循环同步，只在需要时才读取帧。
 
-        改进版：增加容错性，处理解码不稳定问题
+        主循环每次调用 read() 时通过 Event 通知线程读取一帧，
+        读取完成后线程阻塞等待下一次通知。这样摄像头线程的读取频率
+        与主循环完全一致（10fps），不会浪费帧。
         """
         consecutive_errors = 0
-        max_consecutive_errors = 10  # 允许最多10次连续读取失败
-        reconnect_threshold = 5     # 5次失败后尝试重新连接
+        max_consecutive_errors = 10
+        reconnect_threshold = 5
 
         while not self.stopped:
+            # 等待主循环请求下一帧
+            self._need_frame.wait()
+            if self.stopped:
+                break
+            self._need_frame.clear()
+
             if not self.cap or not self.cap.isOpened():
                 break
 
@@ -207,53 +208,44 @@ class Go2RTCCamera:
             if not ret:
                 consecutive_errors += 1
 
-                # 如果达到重新连接阈值，尝试重新连接
                 if consecutive_errors >= reconnect_threshold:
                     print(f"连续{consecutive_errors}次读取失败，重新连接...")
                     self.cap.release()
-                    time.sleep(1)  # 减少等待时间
+                    time.sleep(1)
                     self.cap = cv2.VideoCapture(self.stream_url)
                     if self.cap.isOpened():
-                        consecutive_errors = 0  # 重置计数
+                        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                        consecutive_errors = 0
                     else:
                         if consecutive_errors >= max_consecutive_errors:
                             print(f"连续{max_consecutive_errors}次失败，停止读取")
                             break
                         time.sleep(2)
 
-                # 短暂等待后继续
                 time.sleep(0.05)
                 continue
 
-            # 读取成功，重置错误计数
             if consecutive_errors > 0:
                 consecutive_errors = 0
 
-            # 如果队列已满，移除最旧的帧
             if self.queue.full():
                 try:
                     self.queue.get_nowait()
                 except Empty:
                     pass
 
-            # 添加新帧
             self.queue.put(frame)
-
-            # 控制帧率
-            time.sleep(0.05)
 
     def read(self) -> Tuple[bool, Optional[cv2.typing.MatLike]]:
         """
-        读取一帧（带超时的阻塞读取）
-
-        使用短超时避免永久阻塞，同时减少"读取帧失败"的误报。
+        读取一帧。通知摄像头线程读取，然后等待结果。
 
         Returns:
             (是否成功, 帧数据)
         """
+        self._need_frame.set()
         try:
-            # 使用0.1秒超时，平衡实时性和稳定性
-            frame = self.queue.get(timeout=0.1)
+            frame = self.queue.get(timeout=0.5)
             return True, frame
         except Empty:
             return False, None
@@ -268,11 +260,13 @@ class Go2RTCCamera:
         Returns:
             (是否成功, 帧数据)
         """
-        try:
-            frame = self.queue.get(timeout=timeout)
-            return True, frame
-        except Empty:
-            return False, None
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            ret, frame = self.read()
+            if ret:
+                return True, frame
+            time.sleep(0.05)
+        return False, None
 
     def stop(self) -> None:
         """
@@ -283,7 +277,6 @@ class Go2RTCCamera:
         if self.thread:
             self.thread.join(timeout=2.0)
 
-        # 释放OpenCV VideoCapture
         if self.cap:
             self.cap.release()
             self.cap = None
@@ -418,5 +411,4 @@ def create_camera_from_config(config: Dict[str, Any]) -> Go2RTCCamera:
         width=1920,   # fallback, auto-detected from stream
         height=1080,   # fallback, auto-detected from stream
         fps=30,
-        buffer_size=camera_config.get('buffer_size', 1)
     )

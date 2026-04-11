@@ -39,6 +39,8 @@ class InternalAPIServer:
         self.logger = logger or logging.getLogger(__name__)
         self._clients: Set[websockets.WebSocketServerProtocol] = set()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        # 画面推送开关
+        self._frame_push_enabled: bool = True
         # 缓存最新状态，供新连接使用
         self._latest_frame_jpeg: Optional[bytes] = None
         self._latest_detections = []
@@ -46,6 +48,10 @@ class InternalAPIServer:
         self._running = False
         self._statistics = {}
         self._thread: Optional[threading.Thread] = None
+
+    @property
+    def frame_push_enabled(self) -> bool:
+        return self._frame_push_enabled
 
     def start(self) -> None:
         """在后台线程中启动 WebSocket 服务"""
@@ -95,9 +101,14 @@ class InternalAPIServer:
             if self._latest_frame_jpeg is not None:
                 await websocket.send(self._latest_frame_jpeg)
 
-            # 保持连接，忽略客户端消息（stop/restart 由 web 端直接调 bat 脚本）
+            # 保持连接，处理客户端消息（stop/restart 由 web 端直接调 bat 脚本）
             async for message in websocket:
-                pass
+                try:
+                    data = json.loads(message)
+                    if data.get('type') == 'set_frame_push':
+                        self._frame_push_enabled = data.get('enabled', True)
+                except (json.JSONDecodeError, Exception):
+                    pass
         except websockets.exceptions.ConnectionClosed:
             pass
         except Exception as e:
@@ -108,6 +119,8 @@ class InternalAPIServer:
 
     def push_frame(self, frame: np.ndarray) -> None:
         """推送视频帧（binary WebSocket frame）"""
+        if not self._frame_push_enabled:
+            return
         if not self._clients or self._loop is None:
             return
         try:

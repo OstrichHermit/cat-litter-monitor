@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>猫厕所监控系统</title>
-    <link rel="stylesheet" href="/static/css/desktop.css?v=15">
+    <link rel="stylesheet" href="/static/css/desktop.css?v=16">
 </head>
 <body>
     <div class="app">
@@ -170,9 +170,16 @@
 
         <main class="main">
             <div class="video-card">
-                <div class="card-header">📹 实时监控</div>
+                <div class="card-header">
+                    <span>📹 实时监控</span>
+                    <div class="frame-push-toggle-container">
+                        <span class="frame-push-label">画面</span>
+                        <div class="frame-push-switch edit-switch active" id="framePushToggle" onclick="toggleFramePush()"></div>
+                    </div>
+                </div>
                 <div class="video-wrapper">
-                    <img src="/video_feed" class="video-feed" alt="监控画面">
+                    <img src="/video_feed" class="video-feed" alt="监控画面" id="videoFeed">
+                    <div class="video-placeholder hidden" id="videoPlaceholder">📷 画面推送已暂停</div>
                 </div>
             </div>
 
@@ -270,6 +277,6 @@
         </div>
     </div>
 
-    <script src="/static/js/desktop.js?v=8"></script>
+    <script src="/static/js/desktop.js?v=9"></script>
 </body>
 </html>

@@ -791,6 +791,7 @@ body {
 }
 
 .video-wrapper {
+    position: relative;
     flex: 1;
     display: flex;
     align-items: center;
@@ -1579,4 +1580,49 @@ body {
     .monitor-log-grid {
         grid-template-columns: 1fr;
     }
+}
+
+/* ==================== Frame Push Toggle ==================== */
+.frame-push-toggle-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.frame-push-label {
+    font-size: 14px;
+    opacity: 0.85;
+}
+
+.frame-push-switch {
+    background: rgba(255, 255, 255, 0.3) !important;
+}
+
+.frame-push-switch.active {
+    background: var(--success) !important;
+}
+
+/* Dark mode overrides */
+[data-theme="dark"] .frame-push-label {
+    opacity: 0.7;
+    color: #ccc;
+}
+
+/* Video placeholder overlay */
+.video-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.7);
+    color: #aaa;
+    font-size: 18px;
+    z-index: 5;
+    border-radius: 8px;
+}
+
+.video-placeholder.hidden {
+    display: none;
 }
