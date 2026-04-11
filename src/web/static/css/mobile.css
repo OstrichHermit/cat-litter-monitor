@@ -1170,3 +1170,35 @@ body {
 .lightbox-close:hover {
     background: rgba(255, 255, 255, 0.4);
 }
+
+/* ==================== Frame Push Toggle (Mobile) ==================== */
+.frame-push-toggle-mobile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.frame-push-label-mobile {
+    font-size: 14px;
+    color: var(--gray-600);
+}
+
+[data-theme="dark"] .frame-push-label-mobile {
+    color: #aaa;
+}
+
+.video-placeholder-mobile {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.7);
+    color: #aaa;
+    font-size: 16px;
+    z-index: 5;
+}
+
+.video-placeholder-mobile.hidden {
+    display: none;
+}

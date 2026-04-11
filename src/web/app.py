@@ -212,6 +212,8 @@ class MainBridge:
         self.web_app = web_app
         self.logger = logger or logging.getLogger(__name__)
         self._running = False
+        self._ws = None       # 当前活跃的 WebSocket 连接引用
+        self._ws_loop = None  # 当前 asyncio event loop 引用
 
     def start(self) -> None:
         """在后台线程中启动连接"""
@@ -243,50 +245,69 @@ class MainBridge:
     async def _connect_and_receive(self, loop: asyncio.AbstractEventLoop) -> None:
         """建立连接并接收数据"""
         async with websockets.connect(self.ws_url) as ws:
+            self._ws = ws
+            self._ws_loop = loop
             self.logger.info("MainBridge 已连接到 main 进程")
-            async for message in ws:
-                if not self._running:
-                    break
-                # binary frame = JPEG 视频帧
-                if isinstance(message, bytes):
-                    try:
-                        frame = cv2.imdecode(np.frombuffer(message, dtype=np.uint8), cv2.IMREAD_COLOR)
-                        if frame is not None:
-                            self.web_app.system_state['frame'] = frame
-                    except Exception as e:
-                        self.logger.debug(f"解码帧失败: {e}")
-                # text frame = JSON 数据
-                else:
-                    try:
-                        data = json.loads(message)
-                        msg_type = data.get('type')
-                        msg_data = data.get('data')
+            try:
+                async for message in ws:
+                    if not self._running:
+                        break
+                    # binary frame = JPEG 视频帧
+                    if isinstance(message, bytes):
+                        try:
+                            frame = cv2.imdecode(np.frombuffer(message, dtype=np.uint8), cv2.IMREAD_COLOR)
+                            if frame is not None:
+                                self.web_app.system_state['frame'] = frame
+                        except Exception as e:
+                            self.logger.debug(f"解码帧失败: {e}")
+                    # text frame = JSON 数据
+                    else:
+                        try:
+                            data = json.loads(message)
+                            msg_type = data.get('type')
+                            msg_data = data.get('data')
 
-                        if msg_type == 'status':
-                            self.web_app.system_state['running'] = msg_data['running']
-                            self.web_app.manager.broadcast_sync({
-                                'type': 'status_update',
-                                'data': msg_data
-                            })
-                        elif msg_type == 'statistics':
-                            self.web_app.system_state['statistics'] = msg_data
-                            self.web_app.manager.broadcast_sync({
-                                'type': 'statistics_update',
-                                'data': msg_data
-                            })
-                        elif msg_type == 'detections':
-                            self.web_app.system_state['detections'] = msg_data
-                        elif msg_type == 'tracks':
-                            self.web_app.system_state['tracks'] = msg_data
-                        elif msg_type == 'records_update':
-                            self.web_app.manager.broadcast_sync({
-                                'type': 'records_update',
-                                'data': msg_data
-                            })
-                    except json.JSONDecodeError:
-                        self.logger.debug(f"无法解析消息: {message}")
-                    except Exception as e:
-                        self.logger.debug(f"处理消息失败: {e}")
+                            if msg_type == 'status':
+                                self.web_app.system_state['running'] = msg_data['running']
+                                self.web_app.manager.broadcast_sync({
+                                    'type': 'status_update',
+                                    'data': msg_data
+                                })
+                            elif msg_type == 'statistics':
+                                self.web_app.system_state['statistics'] = msg_data
+                                self.web_app.manager.broadcast_sync({
+                                    'type': 'statistics_update',
+                                    'data': msg_data
+                                })
+                            elif msg_type == 'detections':
+                                self.web_app.system_state['detections'] = msg_data
+                            elif msg_type == 'tracks':
+                                self.web_app.system_state['tracks'] = msg_data
+                            elif msg_type == 'records_update':
+                                self.web_app.manager.broadcast_sync({
+                                    'type': 'records_update',
+                                    'data': msg_data
+                                })
+                        except json.JSONDecodeError:
+                            self.logger.debug(f"无法解析消息: {message}")
+                        except Exception as e:
+                            self.logger.debug(f"处理消息失败: {e}")
+            finally:
+                self._ws = None
+                self._ws_loop = None
+
+    def send_frame_push_command(self, enabled: bool) -> None:
+        """Send frame push enable/disable command to main process via WebSocket"""
+        if self._ws and self._ws_loop:
+            import json
+            message = json.dumps({
+                'type': 'set_frame_push',
+                'enabled': enabled
+            })
+            asyncio.run_coroutine_threadsafe(
+                self._ws.send(message),
+                self._ws_loop
+            )
 
 
 # 缩略图缓存 {filepath: (content_type, thumbnail_bytes)}
@@ -376,7 +397,8 @@ class WebApp:
             'frame': None,
             'detections': [],
             'tracks': [],
-            'statistics': {}
+            'statistics': {},
+            'frame_push_enabled': True
         }
 
         # 注册路由
@@ -424,6 +446,35 @@ class WebApp:
         async def statistics():
             """获取统计数据"""
             return JSONResponse(self.system_state['statistics'])
+
+        @self.app.get('/api/frame-push')
+        async def get_frame_push():
+            """获取画面推送状态"""
+            return JSONResponse({'enabled': self.system_state.get('frame_push_enabled', True)})
+
+        @self.app.post('/api/frame-push')
+        async def set_frame_push(request: Request):
+            """设置画面推送开关"""
+            try:
+                data = await request.json()
+                enabled = data.get('enabled', True)
+
+                # 更新本地状态（影响 MJPEG 生成）
+                self.system_state['frame_push_enabled'] = enabled
+
+                # 转发命令到主进程
+                if self._main_bridge:
+                    self._main_bridge.send_frame_push_command(enabled)
+
+                # 广播给所有浏览器 WebSocket 客户端
+                self.manager.broadcast_sync({
+                    'type': 'frame_push_update',
+                    'data': {'enabled': enabled}
+                })
+
+                return JSONResponse({'success': True, 'enabled': enabled})
+            except Exception as e:
+                return JSONResponse({'success': False, 'error': str(e)}, status_code=500)
 
         @self.app.get('/api/records/today')
         async def records_today():
@@ -1177,6 +1228,9 @@ class WebApp:
         self.stream_clients += 1
         try:
             while True:
+                if not self.system_state.get('frame_push_enabled', True):
+                    time.sleep(0.5)
+                    continue
                 if self.system_state['frame'] is not None:
                     # 编码为JPEG，降低质量以减少带宽
                     ret, buffer = cv2.imencode('.jpg', self.system_state['frame'],

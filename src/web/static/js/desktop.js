@@ -31,6 +31,86 @@ function updateThemeIcon() {
     btn.title = isDark ? '切换浅色模式' : '切换深色模式';
 }
 
+// ==================== Frame Push Toggle ====================
+function initFramePushToggle() {
+    const saved = localStorage.getItem('framePushEnabled');
+    const enabled = saved !== 'false'; // 默认开启
+
+    // 恢复视觉状态
+    const toggle = document.getElementById('framePushToggle');
+    const placeholder = document.getElementById('videoPlaceholder');
+    const videoFeed = document.getElementById('videoFeed');
+
+    if (enabled) {
+        toggle.classList.add('active');
+        placeholder.classList.add('hidden');
+        videoFeed.src = '/video_feed';
+    } else {
+        toggle.classList.remove('active');
+        placeholder.classList.remove('hidden');
+        videoFeed.src = '';
+    }
+
+    // 同步服务器状态
+    fetch('/api/frame-push', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled: enabled})
+    }).catch(err => console.error('Failed to sync frame push state:', err));
+}
+
+async function toggleFramePush() {
+    const toggle = document.getElementById('framePushToggle');
+    const placeholder = document.getElementById('videoPlaceholder');
+    const videoFeed = document.getElementById('videoFeed');
+
+    const isActive = toggle.classList.contains('active');
+    const newState = !isActive;
+
+    try {
+        const response = await fetch('/api/frame-push', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled: newState})
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            if (newState) {
+                toggle.classList.add('active');
+                placeholder.classList.add('hidden');
+                videoFeed.src = '/video_feed';
+            } else {
+                toggle.classList.remove('active');
+                placeholder.classList.remove('hidden');
+                videoFeed.src = '';
+            }
+            localStorage.setItem('framePushEnabled', String(newState));
+        }
+    } catch (err) {
+        console.error('Failed to toggle frame push:', err);
+    }
+}
+
+function handleFramePushUpdate(enabled) {
+    const toggle = document.getElementById('framePushToggle');
+    const placeholder = document.getElementById('videoPlaceholder');
+    const videoFeed = document.getElementById('videoFeed');
+
+    if (enabled) {
+        toggle.classList.add('active');
+        placeholder.classList.add('hidden');
+        videoFeed.src = '/video_feed';
+    } else {
+        toggle.classList.remove('active');
+        placeholder.classList.remove('hidden');
+        videoFeed.src = '';
+    }
+    localStorage.setItem('framePushEnabled', String(enabled));
+}
+
+initFramePushToggle();
+
 initTheme();
 
 // Bind theme toggle button
@@ -63,6 +143,9 @@ function connectWebSocket() {
             case 'records_update':
                 loadRecords();
                 loadNotifications();
+                break;
+            case 'frame_push_update':
+                handleFramePushUpdate(msg.data.enabled);
                 break;
         }
     };
