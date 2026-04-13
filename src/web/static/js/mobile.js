@@ -10,11 +10,13 @@ function initFramePushToggle() {
     if (enabled) {
         toggle.classList.add('active');
         placeholder.classList.add('hidden');
+        videoFeed.style.display = '';
         videoFeed.src = '/video_feed';
     } else {
         toggle.classList.remove('active');
         placeholder.classList.remove('hidden');
         videoFeed.src = '';
+        videoFeed.style.display = 'none';
     }
 
     // 同步服务器状态
@@ -45,11 +47,13 @@ async function toggleFramePush() {
             if (newState) {
                 toggle.classList.add('active');
                 placeholder.classList.add('hidden');
+                videoFeed.style.display = '';
                 videoFeed.src = '/video_feed';
             } else {
                 toggle.classList.remove('active');
                 placeholder.classList.remove('hidden');
                 videoFeed.src = '';
+                videoFeed.style.display = 'none';
             }
             localStorage.setItem('framePushEnabled', String(newState));
         }
@@ -66,11 +70,13 @@ function handleFramePushUpdate(enabled) {
     if (enabled) {
         toggle.classList.add('active');
         placeholder.classList.add('hidden');
+        videoFeed.style.display = '';
         videoFeed.src = '/video_feed';
     } else {
         toggle.classList.remove('active');
         placeholder.classList.remove('hidden');
         videoFeed.src = '';
+        videoFeed.style.display = 'none';
     }
     localStorage.setItem('framePushEnabled', String(enabled));
 }
@@ -196,9 +202,11 @@ navItems.forEach(item => {
         // Load video only when monitor tab is active
         const videoFeed = document.getElementById('videoFeed');
         if (tabId === 'monitor') {
+            videoFeed.style.display = '';
             videoFeed.src = '/video_feed?' + Date.now();
         } else {
             videoFeed.src = '';
+            videoFeed.style.display = 'none';
         }
     });
 });
