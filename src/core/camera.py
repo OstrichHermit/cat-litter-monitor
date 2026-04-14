@@ -204,7 +204,35 @@ class Go2RTCCamera:
             if not self.cap or not self.cap.isOpened():
                 break
 
-            ret, frame = self.cap.read()
+            try:
+                ret, frame = self.cap.read()
+            except cv2.error as e:
+                consecutive_errors += 1
+                print(f"OpenCV异常 (连续{consecutive_errors}次): {e}")
+                if consecutive_errors >= reconnect_threshold:
+                    print(f"连续{consecutive_errors}次异常，重新连接...")
+                    try:
+                        self.cap.release()
+                    except Exception:
+                        pass
+                    time.sleep(1)
+                    try:
+                        self.cap = cv2.VideoCapture(self.stream_url)
+                        if self.cap.isOpened():
+                            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                            consecutive_errors = 0
+                        else:
+                            if consecutive_errors >= max_consecutive_errors:
+                                print(f"连续{max_consecutive_errors}次异常，停止读取")
+                                break
+                            time.sleep(2)
+                    except Exception as re_err:
+                        print(f"重连失败: {re_err}")
+                        if consecutive_errors >= max_consecutive_errors:
+                            break
+                        time.sleep(2)
+                time.sleep(0.05)
+                continue
             if not ret:
                 consecutive_errors += 1
 
