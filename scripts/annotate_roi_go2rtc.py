@@ -62,8 +62,7 @@ class ROIAnnotatorGo2RTC:
             host=go2rtc_config.get('host', 'localhost'),
             rtsp_port=go2rtc_config.get('rtsp_port', 8554),
             api_port=go2rtc_config.get('api_port', 1984),
-            camera_name=go2rtc_config.get('camera_name', 'micam1'),
-            use_webrtc=go2rtc_config.get('use_webrtc', False)
+            camera_name=go2rtc_config.get('camera_name', 'micam1')
         )
 
         # 创建摄像头实例
