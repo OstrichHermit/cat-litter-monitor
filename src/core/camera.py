@@ -157,15 +157,23 @@ class Go2RTCCamera:
 
     def _start_opencv_direct(self) -> bool:
         """
-        使用OpenCV直接启动RTSP流读取
+        使用OpenCV直接启动RTSP流读取，失败时每5秒重试
 
         Returns:
             是否成功启动
         """
-        self.cap = cv2.VideoCapture(self.stream_url)
+        attempt = 0
+        while not self.stopped:
+            self.cap = cv2.VideoCapture(self.stream_url)
 
-        if not self.cap.isOpened():
-            print(f"无法打开流: {self.stream_url}")
+            if self.cap.isOpened():
+                break
+
+            attempt += 1
+            print(f"无法打开流: {self.stream_url}，5秒后重试（第{attempt}次）...")
+            time.sleep(5.0)
+
+        if self.stopped:
             return False
 
         # 设置摄像头参数
@@ -182,6 +190,42 @@ class Go2RTCCamera:
         print(f"go2rtc摄像头已启动（OpenCV）: {self.config.camera_name}")
         return True
 
+    def _reconnect(self, attempt: int) -> bool:
+        """
+        尝试重新连接摄像头
+
+        Args:
+            attempt: 当前重连尝试次数
+
+        Returns:
+            是否重连成功
+        """
+        delay = 5.0
+        print(f"摄像头断开，{delay:.0f}秒后重连（第{attempt + 1}次）...")
+        time.sleep(delay)
+
+        if self.stopped:
+            return False
+
+        # 释放旧的 cap
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+
+        # 重新创建连接
+        self.cap = cv2.VideoCapture(self.stream_url)
+        if self.cap.isOpened():
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            self.cap.set(cv2.CAP_PROP_FPS, self.fps)
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            print(f"摄像头重连成功")
+            return True
+        else:
+            print(f"摄像头重连失败")
+            self.cap = None
+            return False
+
     def _update(self) -> None:
         """
         后台读取线程：与主循环同步，只在需要时才读取帧。
@@ -189,8 +233,11 @@ class Go2RTCCamera:
         主循环每次调用 read() 时通过 Event 通知线程读取一帧，
         读取完成后线程阻塞等待下一次通知。这样摄像头线程的读取频率
         与主循环完全一致（10fps），不会浪费帧。
+
+        读帧失败时会自动尝试重连摄像头，不会退出线程。
         """
         consecutive_errors = 0
+        reconnect_attempt = 0
 
         while not self.stopped:
             # 等待主循环请求下一帧
@@ -199,8 +246,16 @@ class Go2RTCCamera:
                 break
             self._need_frame.clear()
 
+            # 摄像头未连接，尝试重连
             if not self.cap or not self.cap.isOpened():
-                break
+                if not self._reconnect(reconnect_attempt):
+                    reconnect_attempt += 1
+                    # 重连失败时重新通知自己，让下一次循环继续重试
+                    self._need_frame.set()
+                    continue
+                else:
+                    reconnect_attempt = 0
+                    consecutive_errors = 0
 
             try:
                 ret, frame = self.cap.read()
@@ -211,6 +266,14 @@ class Go2RTCCamera:
                 continue
             if not ret:
                 consecutive_errors += 1
+                if consecutive_errors >= 10:
+                    # 连续失败超过 10 次，释放 cap 并触发重连
+                    print(f"连续{consecutive_errors}次读取失败，触发重连")
+                    if self.cap:
+                        self.cap.release()
+                        self.cap = None
+                    self._need_frame.set()
+                    continue
                 time.sleep(0.05)
                 continue
 
