@@ -153,34 +153,51 @@ class ROIAnnotatorGo2RTC:
 
         print("摄像头已启动")
 
-        # 等待一下，让视频流稳定
         import time
-        print("等待视频流稳定（3秒）...")
-        time.sleep(3)
 
-        # 尝试多次读取帧
-        max_attempts = 5
-        for attempt in range(max_attempts):
-            print(f"尝试读取视频帧（第 {attempt + 1}/{max_attempts} 次）...")
+        # 丢弃脏帧：go2rtc RTSP 转发不保证从 I 帧（关键帧）开始，
+        # OpenCV HEVC 解码器收到 P/B 帧时会因缺少参考帧而报错。
+        # 解码器做错误掩盖时会产生低细节的灰色帧，用标准差过滤：
+        #   - 正常摄像头画面 std 通常 > 15（有物体、纹理、光影变化）
+        #   - HEVC 错误掩盖帧 std 接近 0（均匀灰色，无画面细节）
+        print("等待视频流稳定，丢弃脏帧...")
+        valid_count = 0
+        required_consecutive = 5
+        max_warmup = 300
+        warmup_count = 0
+        frame = None
 
-            ret, frame = self.camera.read_blocking(timeout=10)
+        while valid_count < required_consecutive and warmup_count < max_warmup:
+            ret, f = self.camera.read()
+            warmup_count += 1
 
-            if ret and frame is not None:
-                print(f"视频帧已获取 ({frame.shape[1]}x{frame.shape[0]})")
-                break
+            if ret and f is not None and f.shape[0] > 0 and f.shape[1] > 0:
+                frame_std = np.std(f)
+                frame_mean = np.mean(f)
+                if frame_mean > 10 and frame_std > 15:
+                    valid_count += 1
+                    frame = f
+                    if valid_count == 1:
+                        print(f"  找到有效帧（经 {warmup_count} 帧预热，std={frame_std:.1f}）")
+                else:
+                    valid_count = 0
+                    frame = None
             else:
-                print(f"第 {attempt + 1} 次读取失败")
-                if attempt < max_attempts - 1:
-                    print("等待2秒后重试...")
-                    time.sleep(2)
-        else:
-            print("无法读取视频帧")
+                valid_count = 0
+                frame = None
+
+            time.sleep(0.05)
+
+        if frame is None or valid_count < required_consecutive:
+            print("无法获取有效视频帧（流可能未正确解码）")
             print("\n可能的原因：")
-            print("  1. 摄像头没有输出视频流")
-            print("  2. 网络延迟过高")
-            print("  3. go2rtc 配置不正确")
+            print("  1. go2rtc 服务未正常运行")
+            print("  2. 摄像头离线或流不可用")
+            print("  3. HEVC 解码持续失败，尝试重启摄像头")
             self.camera.stop()
             return
+
+        print(f"视频帧已获取 ({frame.shape[1]}x{frame.shape[0]})")
 
         print("开始标注...")
 
