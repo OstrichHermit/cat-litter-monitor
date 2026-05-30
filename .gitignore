@@ -184,15 +184,19 @@ cython_debug/
 # 配置文件（包含个人路径和坐标）
 config/default.yaml
 
+# 数据库
+*.db
+*.db-journal
+
 # 数据目录
-data/litter_monitor.db
 data/models/
 data/manager_state.json
-*.db-journal
 
 # 照片目录
 photo/
 
 # 日志目录
 logs/
-cat_litter.db
+
+# Node.js
+node_modules/
