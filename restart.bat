@@ -52,7 +52,7 @@ if not errorlevel 1 (
 echo.
 echo [%time%] Starting business services...
 
-echo [1/3] Starting go2rtc...
+echo [1/2] Starting go2rtc...
 if not exist "%GO2RTC_PATH%" (
     echo [ERROR] go2rtc not found: %GO2RTC_PATH%
     echo         Please modify GO2RTC_PATH in this script.
@@ -62,13 +62,8 @@ if exist "%~dp0logs\go2rtc.log" move /y "%~dp0logs\go2rtc.log" "%~dp0logs\go2rtc
 powershell -NoProfile -Command "Start-Process -FilePath '%GO2RTC_PATH%' -ArgumentList '-c','%GO2RTC_CONFIG%' -WindowStyle Hidden -RedirectStandardOutput '%~dp0logs\go2rtc.log' -RedirectStandardError '%~dp0logs\go2rtc_err.log'"
 ping -n 4 127.0.0.1 >nul
 
-echo [2/3] Starting Main...
+echo [2/2] Starting Main...
 powershell -NoProfile -Command "Start-Process -FilePath '%PYTHONW%' -ArgumentList '%~dp0src\main.py' -WorkingDirectory '%~dp0' -WindowStyle Hidden"
-
-ping -n 2 127.0.0.1 >nul
-
-echo [3/3] Starting MCP Server...
-powershell -NoProfile -Command "Start-Process -FilePath '%PYTHONW%' -ArgumentList '%~dp0src\mcp\server.py' -WorkingDirectory '%~dp0' -WindowStyle Hidden"
 
 echo.
 echo Waiting for services to initialize...
@@ -89,13 +84,6 @@ if errorlevel 1 (
     set FAILED=1
 ) else (
     echo [OK] main listening on 5002
-)
-netstat -ano | findstr LISTENING | findstr /c:":5001 " >nul 2>&1
-if errorlevel 1 (
-    echo [WARN] mcp port 5001 not listening yet
-    set FAILED=1
-) else (
-    echo [OK] mcp listening on 5001
 )
 
 echo.
