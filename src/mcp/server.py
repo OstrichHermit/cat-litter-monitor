@@ -405,12 +405,13 @@ class LitterMonitorMCPServer:
             操作结果字典
         """
         try:
-            from datetime import datetime
+            from datetime import datetime, date
 
-            # 转换日期
-            date_obj = None
+            # 转换日期，不传默认只查今天
             if record_date:
                 date_obj = datetime.strptime(record_date, '%Y-%m-%d').date()
+            else:
+                date_obj = date.today()
 
             # 查询统计
             stats = self.database.get_daily_statistics(date_obj)
