@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cat-litter-monitor"
+version = "1.0.0"
+description = "猫厕所监控系统 —— catmon 命令行工具与监控服务"
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["dependencies"]
+
+[project.scripts]
+catmon = "src.cli:main"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools]
+packages = ["src", "src.core", "src.mcp", "src.storage", "src.utils", "src.web"]
