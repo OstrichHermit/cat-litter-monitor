@@ -310,8 +310,9 @@ class MainBridge:
             )
 
 
-# 缩略图缓存 {filepath: (content_type, thumbnail_bytes)}
+# 缩略图缓存 {filepath: (content_type, thumbnail_bytes)}，LRU 有上限，防止长期运行内存泄漏
 _thumbnail_cache: Dict[str, tuple] = {}
+_THUMBNAIL_CACHE_MAX = 500
 
 
 class WebApp:
@@ -1063,9 +1064,10 @@ class WebApp:
                 if not full_path_resolved.exists():
                     return JSONResponse({'error': 'File not found'}, status_code=404)
 
-                # 检查内存缓存
+                # 检查内存缓存（LRU 命中：移到末尾标记为最近使用）
                 if filepath in _thumbnail_cache:
-                    content_type, thumbnail_bytes = _thumbnail_cache[filepath]
+                    content_type, thumbnail_bytes = _thumbnail_cache.pop(filepath)
+                    _thumbnail_cache[filepath] = (content_type, thumbnail_bytes)
                     return StreamingResponse(
                         io.BytesIO(thumbnail_bytes),
                         media_type=content_type,
@@ -1091,8 +1093,10 @@ class WebApp:
                 thumbnail_bytes = buffer.tobytes()
                 content_type = 'image/jpeg'
 
-                # 存入缓存
+                # 存入缓存（超出上限时淘汰最旧的条目）
                 _thumbnail_cache[filepath] = (content_type, thumbnail_bytes)
+                while len(_thumbnail_cache) > _THUMBNAIL_CACHE_MAX:
+                    _thumbnail_cache.pop(next(iter(_thumbnail_cache)))
 
                 return StreamingResponse(
                     io.BytesIO(thumbnail_bytes),
