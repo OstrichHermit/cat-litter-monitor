@@ -66,12 +66,6 @@ echo [%time%] Starting manager...
 powershell -NoProfile -Command "Start-Process -FilePath '%PYTHONW%' -ArgumentList '%~dp0src\manager.py' -WorkingDirectory '%~dp0' -WindowStyle Hidden"
 echo [OK] manager started
 
-ping -n 2 127.0.0.1 >nul
-
-echo [%time%] Starting MCP Server...
-powershell -NoProfile -Command "Start-Process -FilePath '%PYTHONW%' -ArgumentList '%~dp0src\mcp\server.py' -WorkingDirectory '%~dp0' -WindowStyle Hidden"
-echo [OK] MCP Server started
-
 echo.
 echo Waiting for services to initialize...
 ping -n 9 127.0.0.1 >nul
@@ -98,13 +92,6 @@ if errorlevel 1 (
     set FAILED=1
 ) else (
     echo [OK] web listening on 5000
-)
-netstat -ano | findstr LISTENING | findstr /c:":5001 " >nul 2>&1
-if errorlevel 1 (
-    echo [WARN] mcp port 5001 not listening yet
-    set FAILED=1
-) else (
-    echo [OK] mcp listening on 5001
 )
 
 echo.
