@@ -100,7 +100,34 @@ class LitterMonitorSystem:
 
         # 初始化猫检测器
         detection_config = self.config.get_detection_config()
-        model_path = self.config.get_absolute_path(detection_config.get('model_path', 'data/models/yolov8n.pt'))
+        model_path = self.config.get_absolute_path(detection_config.get('model_path', 'data/models/yolo26n.onnx'))
+
+        # 计算所有 ROI 的并集 bbox，向外扩 15% 作为检测区域（缩小推理范围，提升速度）
+        detect_region = None
+        roi_config_for_detect = self.config.get_roi_config()
+        xs, ys = [], []
+        for roi in roi_config_for_detect.get('rois', []):
+            if roi.get('type') == 'rectangle':
+                rx, ry, rw, rh = roi['rectangle']
+                xs.extend([rx, rx + rw])
+                ys.extend([ry, ry + rh])
+            else:
+                for px, py in roi.get('polygon', []):
+                    xs.append(px)
+                    ys.append(py)
+        if xs and ys:
+            bx1, bx2 = min(xs), max(xs)
+            by1, by2 = min(ys), max(ys)
+            pad_w = (bx2 - bx1) * 0.15
+            pad_h = (by2 - by1) * 0.15
+            detect_region = (
+                max(0, int(bx1 - pad_w)),
+                max(0, int(by1 - pad_h)),
+                int(bx2 + pad_w),
+                int(by2 + pad_h)
+            )
+        self.logger.info(f"检测区域（ROI 并集外扩 15%）: {detect_region}")
+
         self.detector = CatDetector(
             model_path=model_path,
             confidence_threshold=detection_config.get('confidence_threshold', 0.5),
@@ -108,7 +135,8 @@ class LitterMonitorSystem:
             target_class=detection_config.get('target_class', 15),
             input_size=detection_config.get('input_size', 640),
             use_gpu=detection_config.get('use_gpu', True),
-            half=detection_config.get('half', False)
+            half=detection_config.get('half', False),
+            detect_region=detect_region
         )
         self.logger.info(f"猫检测器初始化完成: {model_path}")
 
