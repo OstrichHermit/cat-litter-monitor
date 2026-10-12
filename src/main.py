@@ -73,6 +73,7 @@ class LitterMonitorSystem:
         # 运行标志
         self.running = False
         self.frame_count = 0
+        self.processed_count = 0
 
         # AI 处理节流：仅在 target_fps 间隔时运行检测/追踪/拍照
 
@@ -283,13 +284,14 @@ class LitterMonitorSystem:
 
                     # 每100帧记录一次
                     if self.frame_count % 100 == 0:
-                        self.logger.info(f"已处理 {self.frame_count} 帧")
+                        self.logger.info(f"已读取 {self.frame_count} 帧，已处理 {self.processed_count} 帧")
 
                     # 跳帧处理：仅在 target_fps 间隔时处理并推流
                     if last_process_time is None or (current_time - last_process_time) >= frame_interval:
                         processed_frame = self._process_frame(frame)
                         self.internal_api.push_frame(processed_frame)
                         last_process_time = current_time
+                        self.processed_count += 1
 
                 except Exception as frame_error:
                     # 单帧处理异常，记录但继续运行
