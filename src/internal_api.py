@@ -10,11 +10,30 @@ import json
 import logging
 import threading
 from datetime import datetime
+from pathlib import Path
 from typing import Set, Optional
 
 import cv2
 import numpy as np
 import websockets
+
+# 画面推送开关的持久化文件：main/web 重启后都从这里恢复状态
+_FRAME_PUSH_STATE_FILE = Path(__file__).resolve().parent.parent / 'data' / 'frame_push_state.json'
+
+
+def load_frame_push_state() -> bool:
+    try:
+        return bool(json.loads(_FRAME_PUSH_STATE_FILE.read_text(encoding='utf-8')).get('enabled', False))
+    except Exception:
+        return False
+
+
+def save_frame_push_state(enabled: bool) -> None:
+    try:
+        _FRAME_PUSH_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _FRAME_PUSH_STATE_FILE.write_text(json.dumps({'enabled': bool(enabled)}), encoding='utf-8')
+    except Exception:
+        pass
 
 
 class InternalAPIServer:
@@ -39,9 +58,8 @@ class InternalAPIServer:
         self.logger = logger or logging.getLogger(__name__)
         self._clients: Set[websockets.WebSocketServerProtocol] = set()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
-        # 画面推送开关
-        # 默认关闭：重启后回到最省 CPU 状态，由前端页面加载时同步真实状态
-        self._frame_push_enabled: bool = False
+        # 画面推送开关：从持久化文件恢复（无文件时默认关闭）
+        self._frame_push_enabled: bool = load_frame_push_state()
         # 缓存最新状态，供新连接使用
         self._latest_frame_jpeg: Optional[bytes] = None
         self._latest_detections = []
@@ -109,6 +127,7 @@ class InternalAPIServer:
                     data = json.loads(message)
                     if data.get('type') == 'set_frame_push':
                         self._frame_push_enabled = data.get('enabled', True)
+                        save_frame_push_state(self._frame_push_enabled)
                 except (json.JSONDecodeError, Exception):
                     pass
         except websockets.exceptions.ConnectionClosed:
