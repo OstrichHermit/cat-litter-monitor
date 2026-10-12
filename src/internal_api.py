@@ -40,7 +40,8 @@ class InternalAPIServer:
         self._clients: Set[websockets.WebSocketServerProtocol] = set()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         # 画面推送开关
-        self._frame_push_enabled: bool = True
+        # 默认关闭：重启后回到最省 CPU 状态，由前端页面加载时同步真实状态
+        self._frame_push_enabled: bool = False
         # 缓存最新状态，供新连接使用
         self._latest_frame_jpeg: Optional[bytes] = None
         self._latest_detections = []

@@ -399,7 +399,7 @@ class WebApp:
             'detections': [],
             'tracks': [],
             'statistics': {},
-            'frame_push_enabled': True
+            'frame_push_enabled': False
         }
 
         # 注册路由
@@ -451,7 +451,7 @@ class WebApp:
         @self.app.get('/api/frame-push')
         async def get_frame_push():
             """获取画面推送状态"""
-            return JSONResponse({'enabled': self.system_state.get('frame_push_enabled', True)})
+            return JSONResponse({'enabled': self.system_state.get('frame_push_enabled', False)})
 
         @self.app.post('/api/frame-push')
         async def set_frame_push(request: Request):
@@ -1232,7 +1232,7 @@ class WebApp:
         self.stream_clients += 1
         try:
             while True:
-                if not self.system_state.get('frame_push_enabled', True):
+                if not self.system_state.get('frame_push_enabled', False):
                     time.sleep(0.5)
                     continue
                 if self.system_state['frame'] is not None:
