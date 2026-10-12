@@ -171,8 +171,13 @@ class CatDetector:
         加载 ONNX 模型（CPU 推理）
         """
         try:
+            # 小模型小图：限制线程数，避免默认线程池（=物理核数）自旋空转烧 CPU
+            so = ort.SessionOptions()
+            so.intra_op_num_threads = 2
+            so.inter_op_num_threads = 1
             self.session = ort.InferenceSession(
                 self.model_path,
+                sess_options=so,
                 providers=['CPUExecutionProvider']
             )
             self.input_name = self.session.get_inputs()[0].name

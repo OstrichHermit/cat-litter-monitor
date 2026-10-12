@@ -313,8 +313,8 @@ class LitterMonitorSystem:
         Returns:
             处理后的帧
         """
-        # 复制帧
-        display_frame = frame.copy()
+        # display_frame 无需提前拷贝：_draw_results 内部 draw_all 会返回副本，不会污染原 frame
+        display_frame = frame
 
         # 检测猫
         detections = self.detector.detect(frame)
