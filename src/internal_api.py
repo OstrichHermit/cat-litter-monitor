@@ -65,7 +65,8 @@ class InternalAPIServer:
         asyncio.set_event_loop(self._loop)
 
         async def main():
-            async with websockets.serve(self._handler, self.host, self.port):
+            # JPEG 已是压缩格式，关闭 permessage-deflate 避免 push_frame 双重压缩烧 CPU
+            async with websockets.serve(self._handler, self.host, self.port, compression=None):
                 await asyncio.Future()  # 永远运行
 
         try:
