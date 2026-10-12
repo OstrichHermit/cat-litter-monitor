@@ -24,6 +24,24 @@ import logging
 import sys
 import threading
 
+# 画面推送开关持久化（与 internal_api.py 共用同一文件，任一进程重启后恢复状态）
+_FRAME_PUSH_STATE_FILE = Path(__file__).resolve().parent.parent.parent / 'data' / 'frame_push_state.json'
+
+
+def _load_frame_push_state() -> bool:
+    try:
+        return bool(json.loads(_FRAME_PUSH_STATE_FILE.read_text(encoding='utf-8')).get('enabled', False))
+    except Exception:
+        return False
+
+
+def _save_frame_push_state(enabled: bool) -> None:
+    try:
+        _FRAME_PUSH_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _FRAME_PUSH_STATE_FILE.write_text(json.dumps({'enabled': bool(enabled)}), encoding='utf-8')
+    except Exception:
+        pass
+
 
 class ConnectionManager:
     """
@@ -399,7 +417,7 @@ class WebApp:
             'detections': [],
             'tracks': [],
             'statistics': {},
-            'frame_push_enabled': False
+            'frame_push_enabled': _load_frame_push_state()
         }
 
         # 注册路由
@@ -460,8 +478,9 @@ class WebApp:
                 data = await request.json()
                 enabled = data.get('enabled', True)
 
-                # 更新本地状态（影响 MJPEG 生成）
+                # 更新本地状态（影响 MJPEG 生成）并持久化
                 self.system_state['frame_push_enabled'] = enabled
+                _save_frame_push_state(enabled)
 
                 # 转发命令到主进程
                 if self._main_bridge:
