@@ -4,12 +4,14 @@ Usage:
     python kill_monitor.py              # kill all
     python kill_monitor.py main manager # skip processes matching these strings
 """
+import os
 import subprocess
 import sys
 
 
 def main():
     excludes = sys.argv[1:]
+    my_pid = os.getpid()
 
     result = subprocess.run(
         ["wmic", "process", "where",
@@ -27,6 +29,9 @@ def main():
         parts = [p.strip() for p in line.split(",")]
         if len(parts) >= 3 and parts[2].isdigit():
             pid = int(parts[2])
+            if pid == my_pid:
+                # 不处理自身：本脚本路径也含 cat-litter-monitor，会被过滤条件命中
+                continue
             try:
                 subprocess.run(
                     ["taskkill", "/F", "/PID", str(pid)],
